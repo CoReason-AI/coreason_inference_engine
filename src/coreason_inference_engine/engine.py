@@ -150,10 +150,12 @@ class InferenceEngine(InferenceEngineProtocol):
             raw_output = ""
             usage_metrics = {"input_tokens": 0, "output_tokens": 0}
 
+            current_max_tokens = 500 if attempt > 0 else None
+
             try:
                 # FR-1.6 / FR-2.6: Active Preemption Check & Stream Consumption
                 async for chunk, usage in self.adapter.generate_stream(
-                    messages, tools, temperature=0.0, logit_biases=logit_biases
+                    messages, tools, temperature=0.0, logit_biases=logit_biases, max_tokens=current_max_tokens
                 ):
                     raw_output += chunk
                     if usage:

@@ -66,6 +66,7 @@ class LLMAdapterProtocol(Protocol):
         tools: list[dict[str, Any]],
         temperature: float,
         logit_biases: dict[int, float] | None = None,
+        max_tokens: int | None = None,
     ) -> AsyncGenerator[tuple[str, dict[str, int]]]:
         """
         Yields chunked string deltas and an optional usage dictionary.

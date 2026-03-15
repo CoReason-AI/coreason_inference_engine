@@ -67,12 +67,14 @@ class DummyLLMAdapter:
         tools: list[dict[str, Any]],
         temperature: float,
         logit_biases: dict[int, float] | None = None,
+        max_tokens: int | None = None,
     ) -> AsyncGenerator[tuple[str, dict[str, int]]]:
         # Workaround unused args
         _ = messages
         _ = tools
         _ = temperature
         _ = logit_biases
+        _ = max_tokens
         yield "dummy_chunk", {"input_tokens": 10, "output_tokens": 5}
 
 

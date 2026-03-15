@@ -253,12 +253,57 @@ class InferenceEngine(InferenceEngineProtocol):
                     messages, tools, temperature=0.0, logit_biases=logit_biases, max_tokens=current_max_tokens
                 )
                 try:
+                    import ijson
+
+                    events = ijson.sendable_list()
+                    parser = ijson.parse_coro(events)
+                    structural_violation = False
+
                     try:
                         # FR-1.6 / FR-2.6: Active Preemption Check & Stream Consumption
                         async for chunk, usage in stream:
                             raw_output += chunk
                             if usage:
                                 usage_metrics = usage
+
+                            # FR-3.2: Fail-fast incremental JSON parsing
+                            try:
+                                # Encode using errors="replace" to prevent panic on severed/invalid UTF-8 mid-stream
+                                parser.send(chunk.encode("utf-8", errors="replace"))
+                                for prefix, event, value in events:
+                                    if prefix == "" and event == "map_key":
+                                        # Only specific top-level keys are expected in AnyIntent structures
+                                        allowed_keys = {
+                                            "tool_name",
+                                            "parameters",
+                                            "agent_attestation",
+                                            "zk_proof",  # ToolInvocationEvent
+                                            "mutations",
+                                            "ledger_hash_pre",
+                                            "ledger_hash_post",  # StateMutationIntent
+                                            "fault_id",
+                                            "target_node_id",
+                                            "failing_pointers",
+                                            "remediation_prompt",  # System2RemediationIntent
+                                        }
+                                        if (
+                                            value not in allowed_keys
+                                            and value != "type"
+                                            and value != "event_id"
+                                            and value != "timestamp"
+                                        ):
+                                            structural_violation = True
+                                            break
+                                events.clear()
+                            except ijson.JSONError, UnicodeEncodeError:
+                                # We ignore standard parse errors during streaming since it's incomplete
+                                events.clear()
+
+                            if structural_violation:
+                                # Sever connection immediately to save output tokens
+                                await stream.aclose()
+                                break
+
                     except httpx.HTTPStatusError as e:
                         if e.response.status_code in (429, 502, 503):
                             # Calculate full jitter exponential backoff

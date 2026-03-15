@@ -253,7 +253,7 @@ class InferenceEngine(InferenceEngineProtocol):
                     messages, tools, temperature=0.0, logit_biases=logit_biases, max_tokens=current_max_tokens
                 )
                 try:
-                    import ijson  # type: ignore
+                    import ijson  # type: ignore[import-untyped]
 
                     events = ijson.sendable_list()
                     parser = ijson.parse_coro(events)
@@ -350,9 +350,9 @@ class InferenceEngine(InferenceEngineProtocol):
                     if isinstance(valid_intent, ToolInvocationEvent):
                         allowed_tools = {t.tool_name for t in action_space.native_tools}
                         if valid_intent.tool_name not in allowed_tools:
-                            from pydantic_core import ValidationError as PydanticCoreValidationError
+                            from pydantic import ValidationError as PydanticValidationError
 
-                            raise PydanticCoreValidationError.from_exception_data(
+                            raise PydanticValidationError.from_exception_data(
                                 title=target_schema_key,
                                 line_errors=[
                                     {

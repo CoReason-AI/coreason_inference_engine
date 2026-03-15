@@ -152,11 +152,12 @@ class InferenceEngine(InferenceEngineProtocol):
 
             current_max_tokens = 500 if attempt > 0 else None
 
+            stream = self.adapter.generate_stream(
+                messages, tools, temperature=0.0, logit_biases=logit_biases, max_tokens=current_max_tokens
+            )
             try:
                 # FR-1.6 / FR-2.6: Active Preemption Check & Stream Consumption
-                async for chunk, usage in self.adapter.generate_stream(
-                    messages, tools, temperature=0.0, logit_biases=logit_biases, max_tokens=current_max_tokens
-                ):
+                async for chunk, usage in stream:
                     raw_output += chunk
                     if usage:
                         usage_metrics = usage
@@ -207,8 +208,10 @@ class InferenceEngine(InferenceEngineProtocol):
                     error=str(e),
                 )
             except asyncio.CancelledError:
-                # Provide strict teardown (In standard httpx client usage, canceling task cleans socket)
-                # Ensure the generator cleanly drops the stream.
+                # FR-1.6: TCP Teardown Shielding
+                # Await aclose shielded to guarantee the TCP FIN/RST packet is successfully dispatched
+                # despite the cancellation context, ensuring zero-leak termination.
+                await asyncio.shield(stream.aclose())
                 raise
 
         # FR-4.3: Convergence Failure (Loop Bounding)

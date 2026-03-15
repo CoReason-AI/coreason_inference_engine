@@ -173,7 +173,24 @@ async def test_remediation_loop_failure(
         )
 
 
+class MockAsyncGenerator:
+    def __init__(self) -> None:
+        self.aclose_called = False
+
+    def __aiter__(self) -> "MockAsyncGenerator":
+        return self
+
+    async def __anext__(self) -> tuple[str, dict[str, int]]:
+        raise asyncio.CancelledError("Preempted")
+
+    async def aclose(self) -> None:
+        self.aclose_called = True
+
+
 class CancellingAdapter(LLMAdapterProtocol):
+    def __init__(self) -> None:
+        self.mock_generator = MockAsyncGenerator()
+
     def count_tokens(self, _text: str) -> int:
         return 0
 
@@ -183,19 +200,18 @@ class CancellingAdapter(LLMAdapterProtocol):
     async def apply_peft_adapters(self, _adapters: list[PeftAdapterContract]) -> None:
         pass
 
-    async def generate_stream(
+    def generate_stream(
         self,
         _messages: list[dict[str, Any]],
         _tools: list[dict[str, Any]],
         temperature: float,
         logit_biases: dict[int, float] | None = None,
         max_tokens: int | None = None,
-    ) -> AsyncGenerator[tuple[str, dict[str, int]]]:
+    ) -> Any:  # Returns the MockAsyncGenerator which has async aclose and async for protocol
         _ = temperature
         _ = logit_biases
         _ = max_tokens
-        yield "start", {"input_tokens": 5, "output_tokens": 0}
-        raise asyncio.CancelledError("Preempted")
+        return self.mock_generator
 
 
 @pytest.mark.asyncio
@@ -209,6 +225,8 @@ async def test_zero_leak_cancellation(
         await engine.generate_intent(
             node=mock_node, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
         )
+
+    assert adapter.mock_generator.aclose_called is True
 
 
 @pytest.mark.asyncio

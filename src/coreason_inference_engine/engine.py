@@ -8,6 +8,7 @@
 
 import asyncio
 import hashlib
+import json
 import re
 import time
 import uuid
@@ -19,6 +20,8 @@ from coreason_manifest.spec.ontology import (
     AnyIntent,
     EpistemicLedgerState,
     LatentScratchpadReceipt,
+    ObservationEvent,
+    System2RemediationIntent,
     ThoughtBranchState,
     TokenBurnReceipt,
     ToolInvocationEvent,
@@ -111,6 +114,53 @@ class InferenceEngine(InferenceEngineProtocol):
         # Placeholder
         return input_tokens + output_tokens
 
+    def _apply_semantic_slicing(self, node: AgentNodeProfile, ledger: EpistemicLedgerState) -> list[dict[str, Any]]:
+        """
+        Applies semantic slicing policy to prevent context window overflow.
+        Recursively evicts the oldest ObservationEvent payloads if token ceiling is exceeded.
+        Caps historical System2RemediationIntent payloads to only the most recent one.
+        """
+        ceiling = None
+        if node.baseline_cognitive_state and node.baseline_cognitive_state.semantic_slicing:
+            ceiling = node.baseline_cognitive_state.semantic_slicing.context_window_token_ceiling
+
+        history = list(ledger.history)
+
+        # Destructive Eviction Prevention: cap System2RemediationIntent to the most recent one
+        remediation_indices = [i for i, event in enumerate(history) if isinstance(event, System2RemediationIntent)]
+        if len(remediation_indices) > 1:
+            indices_to_remove = set(remediation_indices[:-1])
+            history = [event for i, event in enumerate(history) if i not in indices_to_remove]
+
+        # EpistemicLedgerState is frozen, so we must use model_copy(update={"history": history})
+        sliced_ledger = ledger.model_copy(update={"history": history})
+
+        messages = self.hydrator.compile(node, sliced_ledger)
+
+        if not ceiling:
+            return messages
+
+        messages_str = json.dumps(messages)
+        token_mass = self.adapter.count_tokens(messages_str)
+
+        while token_mass > ceiling:
+            # Find the oldest ObservationEvent to evict
+            obs_indices = [i for i, event in enumerate(sliced_ledger.history) if isinstance(event, ObservationEvent)]
+            if not obs_indices:
+                break  # Cannot evict any more observations
+
+            # Remove the oldest ObservationEvent
+            oldest_obs_idx = obs_indices[0]
+            new_history = list(sliced_ledger.history)
+            new_history.pop(oldest_obs_idx)
+            sliced_ledger = sliced_ledger.model_copy(update={"history": new_history})
+
+            messages = self.hydrator.compile(node, sliced_ledger)
+            messages_str = json.dumps(messages)
+            token_mass = self.adapter.count_tokens(messages_str)
+
+        return messages
+
     async def generate_intent(
         self,
         node: AgentNodeProfile,
@@ -129,8 +179,8 @@ class InferenceEngine(InferenceEngineProtocol):
         # FR-1.2.5: System 1 Fast-Path Evaluation (TODO: implementation logic omitted for this skeleton)
         # if node.reflex_policy: ...
 
-        # FR-1.3: Context Compilation (Hydration & Projection)
-        messages = self.hydrator.compile(node, ledger)
+        # FR-1.3 & FR-2.5: Context Compilation & Semantic Slicing
+        messages = self._apply_semantic_slicing(node, ledger)
 
         # Explicitly map tools from injected action space (air-gapped resolution)
         # Assuming action_space.native_tools holds the list of standard tool schemas

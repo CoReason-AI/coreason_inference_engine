@@ -19,6 +19,8 @@ from coreason_manifest.spec.ontology import (
     AgentNodeProfile,
     AnyIntent,
     EpistemicLedgerState,
+    JSONRPCErrorResponseState,
+    JSONRPCErrorState,
     LatentScratchpadReceipt,
     ObservationEvent,
     System2RemediationIntent,
@@ -50,9 +52,12 @@ if "AnyIntent" not in SCHEMA_REGISTRY:
 class InferenceEngine(InferenceEngineProtocol):
     """The stateless cognitive bridge connecting deterministic rules to LLMs."""
 
-    def __init__(self, adapter: LLMAdapterProtocol, hydrator: ContextHydrator | None = None) -> None:
+    def __init__(
+        self, adapter: LLMAdapterProtocol, hydrator: ContextHydrator | None = None, max_concurrent_tasks: int = 1000
+    ) -> None:
         self.adapter = adapter
         self.hydrator = hydrator or ContextHydrator()
+        self._semaphore = asyncio.Semaphore(max_concurrent_tasks)
 
     def _compile_watermark_biases(self, _watermark: Any | None) -> dict[int, float] | None:
         # Placeholder for steganography contract
@@ -176,93 +181,117 @@ class InferenceEngine(InferenceEngineProtocol):
             InferenceConvergenceError: If max_loops are exceeded or upstream API fatally fails.
             asyncio.CancelledError: If preempted by the Orchestrator.
         """
-        # FR-1.2.5: System 1 Fast-Path Evaluation (TODO: implementation logic omitted for this skeleton)
-        # if node.reflex_policy: ...
-
-        # FR-1.3 & FR-2.5: Context Compilation & Semantic Slicing
-        messages = self._apply_semantic_slicing(node, ledger)
-
-        # Explicitly map tools from injected action space (air-gapped resolution)
-        # Assuming action_space.native_tools holds the list of standard tool schemas
-        tools = self.adapter.project_tools([t.model_dump() for t in action_space.native_tools])
-
-        max_loops = node.correction_policy.max_loops if node.correction_policy else 3
-        total_input_tokens = 0
-        total_output_tokens = 0
-
-        # Apply PEFT adapters if requested
-        if node.peft_adapters:
-            await self.adapter.apply_peft_adapters(node.peft_adapters)
-
-        logit_biases = self._compile_watermark_biases(node.logit_steganography)
-
-        for attempt in range(max_loops):
-            raw_output = ""
-            usage_metrics = {"input_tokens": 0, "output_tokens": 0}
-
-            current_max_tokens = 500 if attempt > 0 else None
-
-            stream = self.adapter.generate_stream(
-                messages, tools, temperature=0.0, logit_biases=logit_biases, max_tokens=current_max_tokens
+        # CRITICAL FIX: Deadlock Prevention via Local Backpressure
+        if self._semaphore.locked():
+            logger.warning("Semaphore saturated, yielding 429 JSONRPCErrorResponseState", node_id=node_id)
+            error_intent = cast(
+                "AnyIntent",
+                JSONRPCErrorResponseState(
+                    jsonrpc="2.0",
+                    error=JSONRPCErrorState(
+                        code=429,
+                        message="Too Many Requests: Local backpressure threshold exceeded.",
+                    ),
+                ),
             )
-            try:
-                # FR-1.6 / FR-2.6: Active Preemption Check & Stream Consumption
-                async for chunk, usage in stream:
-                    raw_output += chunk
-                    if usage:
-                        usage_metrics = usage
+            receipt = TokenBurnReceipt(
+                event_id=f"burn_{uuid.uuid4().hex[:8]}",
+                timestamp=time.time(),
+                tool_invocation_id="",
+                input_tokens=0,
+                output_tokens=0,
+                burn_magnitude=0,
+            )
+            return error_intent, receipt, None
 
-                total_input_tokens += usage_metrics.get("input_tokens", 0)
-                total_output_tokens += usage_metrics.get("output_tokens", 0)
+        async with self._semaphore:
+            # FR-1.2.5: System 1 Fast-Path Evaluation (TODO: implementation logic omitted for this skeleton)
+            # if node.reflex_policy: ...
 
-                # Optional: Fail-fast JSON stream parsing could happen inside the loop above
+            # FR-1.3 & FR-2.5: Context Compilation & Semantic Slicing
+            messages = self._apply_semantic_slicing(node, ledger)
 
-                clean_json_str, scratchpad = self._extract_latent_traces(raw_output, node)
+            # Explicitly map tools from injected action space (air-gapped resolution)
+            # Assuming action_space.native_tools holds the list of standard tool schemas
+            tools = self.adapter.project_tools([t.model_dump() for t in action_space.native_tools])
 
-                target_schema_key = self._determine_target_schema(node)
+            max_loops = node.correction_policy.max_loops if node.correction_policy else 3
+            total_input_tokens = 0
+            total_output_tokens = 0
 
-                # Zero-Trust Egress: Pass byte string to validation functor
-                # validate_payload raises ValidationError on failure
-                valid_intent = validate_payload(target_schema_key, clean_json_str.encode("utf-8"))
+            # Apply PEFT adapters if requested
+            if node.peft_adapters:
+                await self.adapter.apply_peft_adapters(node.peft_adapters)
 
-                # Check for tool invocation ID
-                invocation_cid = valid_intent.event_id if isinstance(valid_intent, ToolInvocationEvent) else None
+            logit_biases = self._compile_watermark_biases(node.logit_steganography)
 
-                # Build tracking receipt
-                burn_receipt = TokenBurnReceipt(
-                    event_id=f"burn_{uuid.uuid4().hex[:8]}",
-                    timestamp=time.time(),
-                    tool_invocation_id=invocation_cid or "",
-                    input_tokens=total_input_tokens,
-                    output_tokens=total_output_tokens,
-                    burn_magnitude=self._calculate_cost(total_input_tokens, total_output_tokens),
+            for attempt in range(max_loops):
+                raw_output = ""
+                usage_metrics = {"input_tokens": 0, "output_tokens": 0}
+
+                current_max_tokens = 500 if attempt > 0 else None
+
+                stream = self.adapter.generate_stream(
+                    messages, tools, temperature=0.0, logit_biases=logit_biases, max_tokens=current_max_tokens
                 )
+                try:
+                    # FR-1.6 / FR-2.6: Active Preemption Check & Stream Consumption
+                    async for chunk, usage in stream:
+                        raw_output += chunk
+                        if usage:
+                            usage_metrics = usage
 
-                return cast("AnyIntent", valid_intent), burn_receipt, scratchpad
+                    total_input_tokens += usage_metrics.get("input_tokens", 0)
+                    total_output_tokens += usage_metrics.get("output_tokens", 0)
 
-            except ValidationError as e:
-                # FR-3.3, FR-3.4: Trap validation failure and generate mathematical reprimand
-                fault_id = f"fault_{uuid.uuid4().hex[:8]}"
+                    # Optional: Fail-fast JSON stream parsing could happen inside the loop above
 
-                # CRITICAL: Pass exact DID string (node_id) to prevent remediation crash
-                remediation = generate_correction_prompt(error=e, target_node_id=node_id, fault_id=fault_id)
+                    clean_json_str, scratchpad = self._extract_latent_traces(raw_output, node)
 
-                # Inject prompt and retry
-                messages.append({"role": "assistant", "content": raw_output})
-                messages.append({"role": "user", "content": remediation.model_dump_json()})
+                    target_schema_key = self._determine_target_schema(node)
 
-                logger.warning(
-                    "Validation error during generation; entering remediation loop",
-                    attempt=attempt,
-                    max_loops=max_loops,
-                    error=str(e),
-                )
-            except asyncio.CancelledError:
-                # FR-1.6: TCP Teardown Shielding
-                # Await aclose shielded to guarantee the TCP FIN/RST packet is successfully dispatched
-                # despite the cancellation context, ensuring zero-leak termination.
-                await asyncio.shield(stream.aclose())
-                raise
+                    # Zero-Trust Egress: Pass byte string to validation functor
+                    # validate_payload raises ValidationError on failure
+                    valid_intent = validate_payload(target_schema_key, clean_json_str.encode("utf-8"))
 
-        # FR-4.3: Convergence Failure (Loop Bounding)
-        raise InferenceConvergenceError(f"LLM failed to converge after {max_loops} attempts.")
+                    # Check for tool invocation ID
+                    invocation_cid = valid_intent.event_id if isinstance(valid_intent, ToolInvocationEvent) else None
+
+                    # Build tracking receipt
+                    burn_receipt = TokenBurnReceipt(
+                        event_id=f"burn_{uuid.uuid4().hex[:8]}",
+                        timestamp=time.time(),
+                        tool_invocation_id=invocation_cid or "",
+                        input_tokens=total_input_tokens,
+                        output_tokens=total_output_tokens,
+                        burn_magnitude=self._calculate_cost(total_input_tokens, total_output_tokens),
+                    )
+
+                    return cast("AnyIntent", valid_intent), burn_receipt, scratchpad
+
+                except ValidationError as e:
+                    # FR-3.3, FR-3.4: Trap validation failure and generate mathematical reprimand
+                    fault_id = f"fault_{uuid.uuid4().hex[:8]}"
+
+                    # CRITICAL: Pass exact DID string (node_id) to prevent remediation crash
+                    remediation = generate_correction_prompt(error=e, target_node_id=node_id, fault_id=fault_id)
+
+                    # Inject prompt and retry
+                    messages.append({"role": "assistant", "content": raw_output})
+                    messages.append({"role": "user", "content": remediation.model_dump_json()})
+
+                    logger.warning(
+                        "Validation error during generation; entering remediation loop",
+                        attempt=attempt,
+                        max_loops=max_loops,
+                        error=str(e),
+                    )
+                except asyncio.CancelledError:
+                    # FR-1.6: TCP Teardown Shielding
+                    # Await aclose shielded to guarantee the TCP FIN/RST packet is successfully dispatched
+                    # despite the cancellation context, ensuring zero-leak termination.
+                    await asyncio.shield(stream.aclose())
+                    raise
+
+            # FR-4.3: Convergence Failure (Loop Bounding)
+            raise InferenceConvergenceError(f"LLM failed to converge after {max_loops} attempts.")

@@ -7,6 +7,8 @@
 # Commercial use beyond a 30-day trial requires a separate license.
 
 import asyncio
+import hashlib
+import re
 import time
 import uuid
 from typing import Any, cast
@@ -17,6 +19,7 @@ from coreason_manifest.spec.ontology import (
     AnyIntent,
     EpistemicLedgerState,
     LatentScratchpadReceipt,
+    ThoughtBranchState,
     TokenBurnReceipt,
     ToolInvocationEvent,
 )
@@ -38,7 +41,7 @@ class _AnyIntentAdapter:
 
 
 if "AnyIntent" not in SCHEMA_REGISTRY:
-    SCHEMA_REGISTRY["AnyIntent"] = _AnyIntentAdapter()
+    SCHEMA_REGISTRY["AnyIntent"] = cast("Any", _AnyIntentAdapter())
 
 
 class InferenceEngine(InferenceEngineProtocol):
@@ -53,10 +56,51 @@ class InferenceEngine(InferenceEngineProtocol):
         return None
 
     def _extract_latent_traces(
-        self, raw_output: str, _node: AgentNodeProfile
+        self, raw_output: str, node: AgentNodeProfile
     ) -> tuple[str, LatentScratchpadReceipt | None]:
-        # TODO: Implement structured extraction of <think> tags (FR-3.1).
-        # For now, just return the raw payload.
+        # FR-3.1: Structural extraction of <think> tags
+        require_think_tags = False
+        if node.grpo_reward_policy and node.grpo_reward_policy.format_contract:
+            require_think_tags = node.grpo_reward_policy.format_contract.require_think_tags
+
+        if not require_think_tags:
+            return raw_output, None
+
+        start_tag = "<think>"
+        end_tag = "</think>"
+        start_idx = raw_output.find(start_tag)
+        end_idx = raw_output.find(end_tag)
+
+        if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+            think_content = raw_output[start_idx + len(start_tag) : end_idx].strip()
+            clean_json_str = raw_output[:start_idx] + raw_output[end_idx + len(end_tag) :]
+            clean_json_str = clean_json_str.strip()
+
+            # Remove optional ```json ... ``` wrapper
+            json_match = re.search(r"```(?:json)?\s*(.*?)\s*```", clean_json_str, re.DOTALL)
+            if json_match:
+                clean_json_str = json_match.group(1).strip()
+
+            content_hash = hashlib.sha256(think_content.encode("utf-8")).hexdigest()
+            branch_id = f"branch_{uuid.uuid4().hex[:8]}"
+
+            branch = ThoughtBranchState(
+                branch_id=branch_id,
+                parent_branch_id=None,
+                latent_content_hash=content_hash,
+                prm_score=None,
+            )
+
+            receipt = LatentScratchpadReceipt(
+                trace_id=f"trace_{uuid.uuid4().hex[:8]}",
+                explored_branches=[branch],
+                discarded_branches=[],
+                resolution_branch_id=branch_id,
+                total_latent_tokens=self.adapter.count_tokens(think_content),
+            )
+
+            return clean_json_str, receipt
+
         return raw_output, None
 
     def _determine_target_schema(self, _node: AgentNodeProfile) -> str:

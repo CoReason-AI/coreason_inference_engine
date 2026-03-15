@@ -115,7 +115,9 @@ def test_context_hydrator_role_mapping() -> None:
     # We will hack the history list in the ledger just for this test,
     # because ContextHydrator currently relies on iterating ledger.history
     # and checks isinstance(System2RemediationIntent).
-    ledger.history.append(rem1)
+    from typing import Any, cast
+
+    ledger.history.append(cast("Any", rem1))
 
     messages = hydrator.compile(node, ledger)
 

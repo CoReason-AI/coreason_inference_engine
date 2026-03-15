@@ -245,8 +245,20 @@ class InferenceEngine(InferenceEngineProtocol):
                         if usage:
                             usage_metrics = usage
 
-                    total_input_tokens += usage_metrics.get("input_tokens", 0)
-                    total_output_tokens += usage_metrics.get("output_tokens", 0)
+                    # CRITICAL FIX: Severed Stream Token Tracking & Panic Prevention
+                    # Fallback to local count_tokens if usage metrics are missing
+                    in_tokens = usage_metrics.get("input_tokens", 0)
+                    if not in_tokens:
+                        safe_input = json.dumps(messages).encode("utf-8", errors="replace").decode("utf-8")
+                        in_tokens = self.adapter.count_tokens(safe_input)
+
+                    out_tokens = usage_metrics.get("output_tokens", 0)
+                    if not out_tokens:
+                        safe_output = raw_output.encode("utf-8", errors="replace").decode("utf-8")
+                        out_tokens = self.adapter.count_tokens(safe_output)
+
+                    total_input_tokens += in_tokens
+                    total_output_tokens += out_tokens
 
                     # Optional: Fail-fast JSON stream parsing could happen inside the loop above
 
@@ -256,7 +268,7 @@ class InferenceEngine(InferenceEngineProtocol):
 
                     # Zero-Trust Egress: Pass byte string to validation functor
                     # validate_payload raises ValidationError on failure
-                    valid_intent = validate_payload(target_schema_key, clean_json_str.encode("utf-8"))
+                    valid_intent = validate_payload(target_schema_key, clean_json_str.encode("utf-8", errors="replace"))
 
                     # Check for tool invocation ID
                     invocation_cid = valid_intent.event_id if isinstance(valid_intent, ToolInvocationEvent) else None

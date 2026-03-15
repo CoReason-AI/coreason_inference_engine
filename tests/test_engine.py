@@ -65,6 +65,33 @@ class DummyAdapter(LLMAdapterProtocol):
         yield resp, {"input_tokens": 10, "output_tokens": 10}
 
 
+class SeveredStreamAdapter(LLMAdapterProtocol):
+    def __init__(self, response: str) -> None:
+        self.response = response
+        self.tools_projected = False
+
+    def count_tokens(self, text: str) -> int:
+        return len(text)
+
+    def project_tools(self, schemas: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        self.tools_projected = True
+        return schemas
+
+    async def apply_peft_adapters(self, _adapters: list[PeftAdapterContract]) -> None:
+        pass
+
+    async def generate_stream(
+        self,
+        _messages: list[dict[str, Any]],
+        _tools: list[dict[str, Any]],
+        _temperature: float,
+        _logit_biases: dict[int, float] | None = None,
+        _max_tokens: int | None = None,
+    ) -> AsyncGenerator[tuple[str, dict[str, int]]]:
+        # Simulate returning a string response but omitting usage metrics entirely
+        yield self.response, {}
+
+
 @pytest.fixture
 def mock_node() -> AgentNodeProfile:
     return AgentNodeProfile(
@@ -373,6 +400,28 @@ async def test_local_backpressure_fail_fast(
     finally:
         # Release the semaphore
         engine._semaphore.release()
+
+
+@pytest.mark.asyncio
+async def test_severed_stream_token_fallback(
+    mock_node: AgentNodeProfile, mock_ledger: EpistemicLedgerState, mock_action_space: ActionSpaceManifest
+) -> None:
+    """Verifies that if usage metrics are missing, the engine falls back to local token counting using safe decoding."""
+    # Create an intent that includes potentially invalid UTF-8 bytes disguised in a valid structure
+    valid_intent_json = '{"type": "informational", "message": "fixed\ud83d", "timeout_action": "proceed_default"}'
+
+    adapter = SeveredStreamAdapter(response=valid_intent_json)
+    engine = InferenceEngine(adapter)
+
+    intent, receipt, _scratchpad = await engine.generate_intent(
+        node=mock_node, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
+    )
+
+    # Safe decoding shouldn't explode and length of the safe output will be used
+    safe_output = valid_intent_json.encode("utf-8", errors="replace").decode("utf-8")
+    assert receipt.output_tokens == adapter.count_tokens(safe_output)
+    assert receipt.input_tokens > 0  # Input tokens counted from messages
+    assert intent.type == "informational"
 
 
 def test_anyintent_adapter_includes_missing_intents() -> None:

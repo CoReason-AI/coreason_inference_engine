@@ -23,6 +23,7 @@ from coreason_manifest.spec.ontology import (
     JSONRPCErrorState,
     LatentScratchpadReceipt,
     ObservationEvent,
+    StateMutationIntent,
     System2RemediationIntent,
     ThoughtBranchState,
     TokenBurnReceipt,
@@ -42,7 +43,10 @@ from coreason_inference_engine.utils.logger import logger
 
 class _AnyIntentAdapter:
     def model_validate_json(self, b: bytes) -> Any:
-        return TypeAdapter(AnyIntent).validate_json(b)
+        # StateMutationIntent does not have a "type" field natively, so we cannot use a simple string discriminator.
+        # We'll just rely on a non-discriminated Union for the patched types.
+        patched_intent = AnyIntent | ToolInvocationEvent | StateMutationIntent | System2RemediationIntent
+        return TypeAdapter(patched_intent).validate_json(b)
 
 
 if "AnyIntent" not in SCHEMA_REGISTRY:

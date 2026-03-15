@@ -22,7 +22,7 @@ from coreason_manifest.spec.ontology import (
     SelfCorrectionPolicy,
 )
 
-from coreason_inference_engine.engine import InferenceEngine
+from coreason_inference_engine.engine import InferenceEngine, _AnyIntentAdapter
 from coreason_inference_engine.interfaces import InferenceConvergenceError, LLMAdapterProtocol
 
 
@@ -373,3 +373,48 @@ async def test_local_backpressure_fail_fast(
     finally:
         # Release the semaphore
         engine._semaphore.release()
+
+
+def test_anyintent_adapter_includes_missing_intents() -> None:
+    """Verifies that missing intent types can be successfully validated by _AnyIntentAdapter."""
+    adapter = _AnyIntentAdapter()
+
+    # ToolInvocationEvent
+    tool_invocation_json = b"""{
+        "type": "tool_invocation",
+        "event_id": "test_id_1",
+        "timestamp": 1234567890.0,
+        "tool_name": "test_tool",
+        "parameters": {},
+        "authorized_budget_magnitude": 1,
+        "agent_attestation": {
+            "training_lineage_hash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            "developer_signature": "sig",
+            "capability_merkle_root": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        },
+        "zk_proof": {
+            "proof_protocol": "zk-SNARK",
+            "public_inputs_hash": "hash",
+            "verifier_key_id": "key",
+            "cryptographic_blob": "blob"
+        }
+    }"""
+    tool_intent = adapter.model_validate_json(tool_invocation_json)
+    assert tool_intent.type == "tool_invocation"
+    assert tool_intent.tool_name == "test_tool"
+
+    # StateMutationIntent
+    state_mutation_json = b'{"op": "replace", "path": "/some/path", "value": "new_value"}'
+    mutation_intent = adapter.model_validate_json(state_mutation_json)
+    assert mutation_intent.op == "replace"
+    assert mutation_intent.path == "/some/path"
+    assert mutation_intent.value == "new_value"
+
+    # System2RemediationIntent
+    remediation_json = (
+        b'{"fault_id": "fault_1", "target_node_id": "did:test:1", '
+        b'"failing_pointers": ["/a"], "remediation_prompt": "fix it"}'
+    )
+    remed_intent = adapter.model_validate_json(remediation_json)
+    assert remed_intent.fault_id == "fault_1"
+    assert remed_intent.remediation_prompt == "fix it"

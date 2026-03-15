@@ -14,6 +14,7 @@ import time
 import uuid
 from typing import Any, cast
 
+import httpx
 from coreason_manifest.spec.ontology import (
     ActionSpaceManifest,
     AgentNodeProfile,
@@ -229,7 +230,20 @@ class InferenceEngine(InferenceEngineProtocol):
 
             logit_biases = self._compile_watermark_biases(node.logit_steganography)
 
-            for attempt in range(max_loops):
+            import random
+
+            # Initialize backoff state outside the loop
+            current_backoff = 1.0
+            max_backoff = 60.0
+            global_start_time = time.time()
+
+            # Need to get global timeout, default to a sensible value if not provided
+            global_timeout = 300.0
+            if node.correction_policy and getattr(node.correction_policy, "global_timeout_seconds", None) is not None:
+                global_timeout = float(getattr(node.correction_policy, "global_timeout_seconds", 300.0))
+
+            attempt = 0
+            while attempt < max_loops:
                 raw_output = ""
                 usage_metrics = {"input_tokens": 0, "output_tokens": 0}
 
@@ -239,11 +253,28 @@ class InferenceEngine(InferenceEngineProtocol):
                     messages, tools, temperature=0.0, logit_biases=logit_biases, max_tokens=current_max_tokens
                 )
                 try:
-                    # FR-1.6 / FR-2.6: Active Preemption Check & Stream Consumption
-                    async for chunk, usage in stream:
-                        raw_output += chunk
-                        if usage:
-                            usage_metrics = usage
+                    try:
+                        # FR-1.6 / FR-2.6: Active Preemption Check & Stream Consumption
+                        async for chunk, usage in stream:
+                            raw_output += chunk
+                            if usage:
+                                usage_metrics = usage
+                    except httpx.HTTPStatusError as e:
+                        if e.response.status_code in (429, 502, 503):
+                            # Calculate full jitter exponential backoff
+                            jitter = random.uniform(0, current_backoff)  # noqa: S311
+
+                            elapsed_time = time.time() - global_start_time
+                            if elapsed_time + jitter > global_timeout:
+                                raise InferenceConvergenceError(
+                                    f"SLA Contention: Required backoff delay {jitter}s exceeds remaining global SLA "
+                                    f"({global_timeout - elapsed_time}s)"
+                                ) from e
+
+                            await asyncio.sleep(jitter)
+                            current_backoff = min(current_backoff * 2, max_backoff)
+                            continue  # Retry without incrementing attempt counter since it's a transient fault
+                        raise
 
                     # CRITICAL FIX: Severed Stream Token Tracking & Panic Prevention
                     # Fallback to local count_tokens if usage metrics are missing
@@ -302,6 +333,7 @@ class InferenceEngine(InferenceEngineProtocol):
                         max_loops=max_loops,
                         error=str(e),
                     )
+                    attempt += 1  # Increment attempt on ValidationError
                 except asyncio.CancelledError:
                     # FR-1.6: TCP Teardown Shielding
                     # Await aclose shielded to guarantee the TCP FIN/RST packet is successfully dispatched

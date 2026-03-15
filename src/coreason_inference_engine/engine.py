@@ -253,7 +253,7 @@ class InferenceEngine(InferenceEngineProtocol):
                     messages, tools, temperature=0.0, logit_biases=logit_biases, max_tokens=current_max_tokens
                 )
                 try:
-                    import ijson
+                    import ijson  # type: ignore
 
                     events = ijson.sendable_list()
                     parser = ijson.parse_coro(events)

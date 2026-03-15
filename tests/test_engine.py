@@ -17,6 +17,7 @@ from coreason_manifest.spec.ontology import (
     CognitiveFormatContract,
     EpistemicLedgerState,
     EpistemicRewardModelPolicy,
+    JSONRPCErrorResponseState,
     PeftAdapterContract,
     SelfCorrectionPolicy,
 )
@@ -341,3 +342,34 @@ async def test_extract_latent_traces_no_tags_required(
     assert scratchpad is None
     # Ensure it went through remediation loop (used 2 responses)
     assert adapter.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_local_backpressure_fail_fast(
+    mock_node: AgentNodeProfile, mock_ledger: EpistemicLedgerState, mock_action_space: ActionSpaceManifest
+) -> None:
+    """Verifies that exceeding the semaphore capacity immediately yields a 429 JSONRPCErrorResponseState."""
+    valid_intent_json = '{"type": "informational", "message": "hello", "timeout_action": "proceed_default"}'
+    adapter = DummyAdapter(responses=[valid_intent_json])
+    # Set max_concurrent_tasks to 1 to easily test saturation
+    engine = InferenceEngine(adapter, max_concurrent_tasks=1)
+
+    # Acquire the semaphore to simulate a running task
+    await engine._semaphore.acquire()
+
+    try:
+        # Since the semaphore is locked, generate_intent should fail-fast
+        intent, receipt, scratchpad = await engine.generate_intent(
+            node=mock_node, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
+        )
+
+        assert isinstance(intent, JSONRPCErrorResponseState)
+        assert intent.error.code == 429
+        assert "Local backpressure threshold exceeded" in intent.error.message
+        assert receipt.input_tokens == 0
+        assert receipt.output_tokens == 0
+        assert receipt.burn_magnitude == 0
+        assert scratchpad is None
+    finally:
+        # Release the semaphore
+        engine._semaphore.release()

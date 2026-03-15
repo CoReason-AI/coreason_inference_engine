@@ -44,9 +44,11 @@ class DummyAdapter(LLMAdapterProtocol):
         self,
         _messages: list[dict[str, Any]],
         _tools: list[dict[str, Any]],
-        _temperature: float,
-        _logit_biases: dict[int, float] | None = None,
+        temperature: float,
+        logit_biases: dict[int, float] | None = None,
     ) -> AsyncGenerator[tuple[str, dict[str, int]]]:
+        _ = temperature
+        _ = logit_biases
         if self.call_count >= len(self.responses):
             yield "", {"input_tokens": 0, "output_tokens": 0}
             return
@@ -156,9 +158,11 @@ class CancellingAdapter(LLMAdapterProtocol):
         self,
         _messages: list[dict[str, Any]],
         _tools: list[dict[str, Any]],
-        _temperature: float,
-        _logit_biases: dict[int, float] | None = None,
+        temperature: float,
+        logit_biases: dict[int, float] | None = None,
     ) -> AsyncGenerator[tuple[str, dict[str, int]]]:
+        _ = temperature
+        _ = logit_biases
         yield "start", {"input_tokens": 5, "output_tokens": 0}
         raise asyncio.CancelledError("Preempted")
 

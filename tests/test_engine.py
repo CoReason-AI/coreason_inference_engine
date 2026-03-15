@@ -14,7 +14,9 @@ import pytest
 from coreason_manifest.spec.ontology import (
     ActionSpaceManifest,
     AgentNodeProfile,
+    CognitiveFormatContract,
     EpistemicLedgerState,
+    EpistemicRewardModelPolicy,
     PeftAdapterContract,
     SelfCorrectionPolicy,
 )
@@ -206,3 +208,89 @@ async def test_peft_adapters_applied(
     )
 
     assert adapter.applied_peft is True
+
+
+@pytest.fixture
+def mock_node_with_think() -> AgentNodeProfile:
+    return AgentNodeProfile(
+        description="Test node with think tags",
+        type="agent",
+        correction_policy=SelfCorrectionPolicy(max_loops=2, rollback_on_failure=True),
+        grpo_reward_policy=EpistemicRewardModelPolicy(
+            policy_id="policy_1",
+            reference_graph_id="graph_1",
+            format_contract=CognitiveFormatContract(require_think_tags=True),
+            beta_path_weight=0.5,
+        ),
+    )
+
+
+@pytest.mark.asyncio
+async def test_extract_latent_traces_with_tags(
+    mock_node_with_think: AgentNodeProfile, mock_ledger: EpistemicLedgerState, mock_action_space: ActionSpaceManifest
+) -> None:
+    raw_response = (
+        "<think>\nThis is a reasoning trace.\n</think>\n"
+        '```json\n{"type": "informational", "message": "hello", "timeout_action": "proceed_default"}\n```'
+    )
+    adapter = DummyAdapter(responses=[raw_response])
+    engine = InferenceEngine(adapter)
+
+    intent, _receipt, scratchpad = await engine.generate_intent(
+        node=mock_node_with_think, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
+    )
+
+    assert intent.type == "informational"
+    assert scratchpad is not None
+    assert scratchpad.total_latent_tokens == len("This is a reasoning trace.")
+    assert len(scratchpad.explored_branches) == 1
+    branch = scratchpad.explored_branches[0]
+    import hashlib
+
+    expected_hash = hashlib.sha256(b"This is a reasoning trace.").hexdigest()
+    assert branch.latent_content_hash == expected_hash
+
+
+@pytest.mark.asyncio
+async def test_extract_latent_traces_missing_tags_but_required(
+    mock_node_with_think: AgentNodeProfile, mock_ledger: EpistemicLedgerState, mock_action_space: ActionSpaceManifest
+) -> None:
+    # Tags are missing, should return raw_output. Since the payload is not valid JSON
+    # (or maybe it is, let's just make it invalid to trigger validation error).
+    # Actually, we should check that the raw_output is returned unaltered, and we can check that it succeeds.
+    raw_response = '{"type": "informational", "message": "hello", "timeout_action": "proceed_default"}'
+    adapter = DummyAdapter(responses=[raw_response])
+    engine = InferenceEngine(adapter)
+
+    intent, _receipt, scratchpad = await engine.generate_intent(
+        node=mock_node_with_think, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
+    )
+
+    assert intent.type == "informational"
+    assert scratchpad is None
+
+
+@pytest.mark.asyncio
+async def test_extract_latent_traces_no_tags_required(
+    mock_node: AgentNodeProfile, mock_ledger: EpistemicLedgerState, mock_action_space: ActionSpaceManifest
+) -> None:
+    raw_response = (
+        "<think>\nThis is a reasoning trace.\n</think>\n"
+        '{"type": "informational", "message": "hello", "timeout_action": "proceed_default"}'
+    )
+    # mock_node does not have grpo_reward_policy, so require_think_tags is False
+    # _extract_latent_traces will just return raw_response, None.
+    # Since raw_response contains <think>, JSON validation will fail, triggering remediation loop.
+    # We will give it a second response that is just valid JSON to pass.
+    valid_response = '{"type": "informational", "message": "hello", "timeout_action": "proceed_default"}'
+    adapter = DummyAdapter(responses=[raw_response, valid_response])
+    engine = InferenceEngine(adapter)
+
+    intent, _receipt, scratchpad = await engine.generate_intent(
+        node=mock_node, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
+    )
+
+    assert intent.type == "informational"
+    assert scratchpad is None
+    # Ensure it went through remediation loop (used 2 responses)
+    assert adapter.call_count == 2

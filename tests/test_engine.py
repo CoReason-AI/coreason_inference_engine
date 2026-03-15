@@ -119,6 +119,81 @@ def mock_action_space() -> ActionSpaceManifest:
 
 
 @pytest.mark.asyncio
+async def test_ijson_early_termination(
+    mock_node: AgentNodeProfile, mock_ledger: EpistemicLedgerState, mock_action_space: ActionSpaceManifest
+) -> None:
+    """Verifies that the engine severs the stream early using ijson if the structure violates expected bounds."""
+
+    class StreamingAdapter(LLMAdapterProtocol):
+        def __init__(self) -> None:
+            self.aclose_called = False
+            self.stream_ended = False
+
+        def count_tokens(self, text: str) -> int:
+            return len(text)
+
+        def project_tools(self, schemas: list[dict[str, Any]]) -> list[dict[str, Any]]:
+            return schemas
+
+        async def apply_peft_adapters(self, adapters: list[PeftAdapterContract]) -> None:
+            pass
+
+        def generate_stream(
+            self,
+            messages: list[dict[str, Any]],
+            tools: list[dict[str, Any]],
+            temperature: float,
+            logit_biases: dict[int, float] | None = None,
+            max_tokens: int | None = None,
+        ) -> AsyncGenerator[tuple[str, dict[str, int]]]:
+            _ = messages
+            _ = tools
+            _ = temperature
+            _ = logit_biases
+            _ = max_tokens
+            # Provide an invalid key mid-stream
+            chunks = ['{"inva', 'lid_key": "val', 'ue"}']
+
+            # Use a helper inner class to track aclose
+            class AsyncGenWrapper:
+                def __init__(self, parent: Any) -> None:
+                    self.parent = parent
+                    self.idx = 0
+
+                def __aiter__(self) -> "AsyncGenWrapper":
+                    return self
+
+                async def __anext__(self) -> tuple[str, dict[str, int]]:
+                    if self.idx < len(chunks):
+                        c = chunks[self.idx]
+                        self.idx += 1
+                        return c, {"input_tokens": 10, "output_tokens": 0}
+                    self.parent.stream_ended = True
+                    raise StopAsyncIteration
+
+                async def aclose(self) -> None:
+                    self.parent.aclose_called = True
+
+            return AsyncGenWrapper(self)  # type: ignore
+
+    # First attempt: invalid key (triggers early termination). Second attempt: valid.
+    adapter = StreamingAdapter()
+    engine = InferenceEngine(adapter)
+
+    # We need to monkey-patch or just test that it throws InferenceConvergenceError after max loops,
+    # or give it a valid response on retry. Since StreamingAdapter always yields the invalid stream,
+    # it will fail 2 times and raise InferenceConvergenceError.
+
+    with pytest.raises(InferenceConvergenceError):
+        await engine.generate_intent(
+            node=mock_node, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
+        )
+
+    assert adapter.aclose_called is True
+    assert adapter.stream_ended is False  # Meaning it broke out before finishing chunks
+
+
+@pytest.mark.asyncio
 async def test_successful_generation(
     mock_node: AgentNodeProfile, mock_ledger: EpistemicLedgerState, mock_action_space: ActionSpaceManifest
 ) -> None:

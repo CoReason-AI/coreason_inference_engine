@@ -253,7 +253,7 @@ class InferenceEngine(InferenceEngineProtocol):
                     messages, tools, temperature=0.0, logit_biases=logit_biases, max_tokens=current_max_tokens
                 )
                 try:
-                    import ijson
+                    import ijson  # type: ignore
 
                     events = ijson.sendable_list()
                     parser = ijson.parse_coro(events)
@@ -345,6 +345,28 @@ class InferenceEngine(InferenceEngineProtocol):
                     # Zero-Trust Egress: Pass byte string to validation functor
                     # validate_payload raises ValidationError on failure
                     valid_intent = validate_payload(target_schema_key, clean_json_str.encode("utf-8", errors="replace"))
+
+                    # FR-4.5: Hallucinated Tool Escalation
+                    if isinstance(valid_intent, ToolInvocationEvent):
+                        allowed_tools = {t.tool_name for t in action_space.native_tools}
+                        if valid_intent.tool_name not in allowed_tools:
+                            from pydantic_core import ValidationError as PydanticCoreValidationError
+
+                            raise PydanticCoreValidationError.from_exception_data(
+                                title=target_schema_key,
+                                line_errors=[
+                                    {
+                                        "type": "value_error",
+                                        "loc": ("tool_name",),
+                                        "input": valid_intent.tool_name,
+                                        "ctx": {
+                                            "error": ValueError(
+                                                f"Tool '{valid_intent.tool_name}' not found in ActionSpaceManifest."
+                                            )
+                                        },
+                                    }
+                                ],
+                            )
 
                     # Check for tool invocation ID
                     invocation_cid = valid_intent.event_id if isinstance(valid_intent, ToolInvocationEvent) else None

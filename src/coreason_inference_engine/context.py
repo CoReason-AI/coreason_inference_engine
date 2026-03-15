@@ -77,7 +77,8 @@ class ContextHydrator:
             if isinstance(typed_event, ObservationEvent):
                 # We need to map ObservationEvent payloads into strings.
                 content_dict = {
-                    k: v.model_dump() if hasattr(v, "model_dump") else v for k, v in typed_event.payload.items()
+                    k: v.model_dump() if hasattr(v, "model_dump") and v is not None else v
+                    for k, v in typed_event.payload.items()
                 }
                 content_str = json.dumps(content_dict)
 

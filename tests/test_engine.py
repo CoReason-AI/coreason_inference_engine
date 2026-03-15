@@ -84,10 +84,13 @@ class SeveredStreamAdapter(LLMAdapterProtocol):
         self,
         _messages: list[dict[str, Any]],
         _tools: list[dict[str, Any]],
-        _temperature: float,
-        _logit_biases: dict[int, float] | None = None,
-        _max_tokens: int | None = None,
+        temperature: float,
+        logit_biases: dict[int, float] | None = None,
+        max_tokens: int | None = None,
     ) -> AsyncGenerator[tuple[str, dict[str, int]]]:
+        _ = temperature
+        _ = logit_biases
+        _ = max_tokens
         # Simulate returning a string response but omitting usage metrics entirely
         yield self.response, {}
 

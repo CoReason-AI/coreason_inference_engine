@@ -1,0 +1,2 @@
+[deptry.per_rule_ignores]
+DEP002 = ["httpx", "ijson", "pydantic", "tiktoken"]

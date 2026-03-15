@@ -13,6 +13,11 @@ authors = [
 ]
 dependencies = [
     "loguru>=0.7.2",
+    "coreason-manifest",
+    "pydantic",
+    "httpx",
+    "ijson",
+    "tiktoken"
 ]
 license = { file = "LICENSE" }
 classifiers = [
@@ -73,3 +78,6 @@ asyncio_mode = "auto"
 
 [tool.coverage.run]
 omit = ["tests/*"]
+
+[tool.deptry.per_rule_ignores]
+DEP002 = ["httpx", "ijson", "pydantic", "tiktoken", "coreason-manifest"]

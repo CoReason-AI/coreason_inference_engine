@@ -10,6 +10,7 @@ import asyncio
 from collections.abc import AsyncGenerator
 from typing import Any
 
+import httpx
 import pytest
 from coreason_manifest.spec.ontology import (
     ActionSpaceManifest,
@@ -470,3 +471,289 @@ def test_anyintent_adapter_includes_missing_intents() -> None:
     remed_intent = adapter.model_validate_json(remediation_json)
     assert remed_intent.fault_id == "fault_1"
     assert remed_intent.remediation_prompt == "fix it"
+
+
+class HttpFaultAdapter(LLMAdapterProtocol):
+    def __init__(self, responses: list[str], status_codes: list[int]) -> None:
+        self.responses = responses
+        self.status_codes = status_codes
+        self.call_count = 0
+
+    def count_tokens(self, text: str) -> int:
+        return len(text)
+
+    def project_tools(self, schemas: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return schemas
+
+    async def apply_peft_adapters(self, adapters: list[PeftAdapterContract]) -> None:
+        pass
+
+    async def generate_stream(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        temperature: float,
+        logit_biases: dict[int, float] | None = None,
+        max_tokens: int | None = None,
+    ) -> AsyncGenerator[tuple[str, dict[str, int]]]:
+        _ = messages
+        _ = tools
+        _ = temperature
+        _ = logit_biases
+        _ = max_tokens
+        status_code = self.status_codes[self.call_count]
+        response = self.responses[self.call_count]
+        self.call_count += 1
+
+        if status_code != 200:
+            req = httpx.Request("POST", "http://test")
+            resp = httpx.Response(status_code, request=req)
+            raise httpx.HTTPStatusError("Fault", request=req, response=resp)
+
+        yield response, {"input_tokens": 10, "output_tokens": 20}
+
+
+@pytest.mark.asyncio
+async def test_transient_network_fault_backoff(
+    mock_node: AgentNodeProfile, mock_ledger: EpistemicLedgerState, mock_action_space: ActionSpaceManifest
+) -> None:
+    # First call yields 429, second yields 200
+    responses = ["", '{"type": "informational", "message": "hello", "timeout_action": "proceed_default"}']
+    status_codes = [429, 200]
+
+    adapter = HttpFaultAdapter(responses, status_codes)
+    engine = InferenceEngine(adapter)
+
+    intent, _receipt, _scratchpad = await engine.generate_intent(
+        node=mock_node, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
+    )
+
+    assert intent.type == "informational"
+    assert adapter.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_transient_network_fault_sla_exceeded(
+    mock_node: AgentNodeProfile, mock_ledger: EpistemicLedgerState, mock_action_space: ActionSpaceManifest
+) -> None:
+    # First call yields 429
+    responses = [""]
+    status_codes = [429]
+
+    adapter = HttpFaultAdapter(responses, status_codes)
+    engine = InferenceEngine(adapter)
+
+    _updated_policy = (
+        mock_node.correction_policy.model_copy(update={"global_timeout_seconds": 0.0})
+        if mock_node.correction_policy
+        else None
+    )
+    correction_policy = (
+        _updated_policy if _updated_policy is not None else SelfCorrectionPolicy(max_loops=2, rollback_on_failure=True)
+    )
+    object.__setattr__(correction_policy, "global_timeout_seconds", 0.0)
+    _updated_policy = (
+        mock_node.correction_policy.model_copy(update={"global_timeout_seconds": 0.0})
+        if mock_node.correction_policy
+        else None
+    )
+    correction_policy = (
+        _updated_policy if _updated_policy is not None else SelfCorrectionPolicy(max_loops=2, rollback_on_failure=True)
+    )
+    object.__setattr__(correction_policy, "global_timeout_seconds", 0.0)
+
+    node_with_small_timeout = mock_node.model_copy(update={"correction_policy": correction_policy})
+
+    with pytest.raises(InferenceConvergenceError, match="SLA Contention: Required backoff delay"):
+        await engine.generate_intent(
+            node=node_with_small_timeout, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
+        )
+
+
+class HttpFaultMidStreamAdapter(LLMAdapterProtocol):
+    def __init__(self, responses: list[str], status_codes: list[int]) -> None:
+        self.responses = responses
+        self.status_codes = status_codes
+        self.call_count = 0
+
+    def count_tokens(self, text: str) -> int:
+        return len(text)
+
+    def project_tools(self, schemas: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return schemas
+
+    async def apply_peft_adapters(self, adapters: list[PeftAdapterContract]) -> None:
+        pass
+
+    async def generate_stream(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        temperature: float,
+        logit_biases: dict[int, float] | None = None,
+        max_tokens: int | None = None,
+    ) -> AsyncGenerator[tuple[str, dict[str, int]]]:
+        _ = messages
+        _ = tools
+        _ = temperature
+        _ = logit_biases
+        _ = max_tokens
+        status_code = self.status_codes[self.call_count]
+        response = self.responses[self.call_count]
+        self.call_count += 1
+
+        if status_code != 200:
+            req = httpx.Request("POST", "http://test")
+            resp = httpx.Response(status_code, request=req)
+            raise httpx.HTTPStatusError("Fault", request=req, response=resp)
+
+        yield response, {"input_tokens": 10, "output_tokens": 20}
+
+        # Then fault mid-stream if we have another status code that is bad
+        # Let's just create a mock generator that fails on the first yield
+        # The first case already covers generator creation failure.
+        # This will be similar, but let's test where it yields then fails.
+
+    def generate_stream_faulty(self, *args: Any, **kwargs: Any) -> Any:
+        _ = args
+        _ = kwargs
+
+        async def mock_gen() -> AsyncGenerator[tuple[str, dict[str, int]]]:
+            yield "part1", {"input_tokens": 10, "output_tokens": 0}
+            req = httpx.Request("POST", "http://test")
+            resp = httpx.Response(502, request=req)
+            raise httpx.HTTPStatusError("Fault", request=req, response=resp)
+
+        return mock_gen()
+
+
+@pytest.mark.asyncio
+async def test_transient_network_fault_mid_stream(
+    mock_node: AgentNodeProfile, mock_ledger: EpistemicLedgerState, mock_action_space: ActionSpaceManifest
+) -> None:
+    class MidStreamFaultAdapter(LLMAdapterProtocol):
+        def __init__(self) -> None:
+            self.call_count = 0
+
+        def count_tokens(self, text: str) -> int:
+            return len(text)
+
+        def project_tools(self, schemas: list[dict[str, Any]]) -> list[dict[str, Any]]:
+            return schemas
+
+        async def apply_peft_adapters(self, adapters: list[PeftAdapterContract]) -> None:
+            pass
+
+        async def generate_stream(
+            self,
+            messages: list[dict[str, Any]],
+            tools: list[dict[str, Any]],
+            temperature: float,
+            logit_biases: dict[int, float] | None = None,
+            max_tokens: int | None = None,
+        ) -> AsyncGenerator[tuple[str, dict[str, int]]]:
+            _ = messages
+            _ = tools
+            _ = temperature
+            _ = logit_biases
+            _ = max_tokens
+            self.call_count += 1
+            if self.call_count == 1:
+                yield "part1", {"input_tokens": 10, "output_tokens": 0}
+                req = httpx.Request("POST", "http://test")
+                resp = httpx.Response(502, request=req)
+                raise httpx.HTTPStatusError("Fault", request=req, response=resp)
+            else:
+                yield (
+                    '{"type": "informational", "message": "hello", "timeout_action": "proceed_default"}',
+                    {"input_tokens": 10, "output_tokens": 20},
+                )
+
+    adapter = MidStreamFaultAdapter()
+    engine = InferenceEngine(adapter)
+
+    intent, _receipt, _scratchpad = await engine.generate_intent(
+        node=mock_node, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
+    )
+
+    assert intent.type == "informational"
+    assert adapter.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_transient_network_fault_mid_stream_sla_exceeded(
+    mock_node: AgentNodeProfile, mock_ledger: EpistemicLedgerState, mock_action_space: ActionSpaceManifest
+) -> None:
+    class MidStreamFaultAdapter(LLMAdapterProtocol):
+        def __init__(self) -> None:
+            self.call_count = 0
+
+        def count_tokens(self, text: str) -> int:
+            return len(text)
+
+        def project_tools(self, schemas: list[dict[str, Any]]) -> list[dict[str, Any]]:
+            return schemas
+
+        async def apply_peft_adapters(self, adapters: list[PeftAdapterContract]) -> None:
+            pass
+
+        async def generate_stream(
+            self,
+            messages: list[dict[str, Any]],
+            tools: list[dict[str, Any]],
+            temperature: float,
+            logit_biases: dict[int, float] | None = None,
+            max_tokens: int | None = None,
+        ) -> AsyncGenerator[tuple[str, dict[str, int]]]:
+            _ = messages
+            _ = tools
+            _ = temperature
+            _ = logit_biases
+            _ = max_tokens
+            self.call_count += 1
+            yield "part1", {"input_tokens": 10, "output_tokens": 0}
+            req = httpx.Request("POST", "http://test")
+            resp = httpx.Response(502, request=req)
+            raise httpx.HTTPStatusError("Fault", request=req, response=resp)
+
+    adapter = MidStreamFaultAdapter()
+    engine = InferenceEngine(adapter)
+
+    correction_policy = (
+        mock_node.correction_policy.model_copy()
+        if mock_node.correction_policy
+        else SelfCorrectionPolicy(max_loops=2, rollback_on_failure=True)
+    )
+    _updated_policy = (
+        mock_node.correction_policy.model_copy(update={"global_timeout_seconds": 0.0})
+        if mock_node.correction_policy
+        else None
+    )
+    correction_policy = _updated_policy if _updated_policy is not None else correction_policy
+    if correction_policy is None:
+        correction_policy = SelfCorrectionPolicy(max_loops=2, rollback_on_failure=True)
+        object.__setattr__(correction_policy, "global_timeout_seconds", 0.0)
+
+    node_with_small_timeout = mock_node.model_copy(update={"correction_policy": correction_policy})
+
+    with pytest.raises(InferenceConvergenceError, match="SLA Contention: Required backoff delay"):
+        await engine.generate_intent(
+            node=node_with_small_timeout, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
+        )
+
+
+@pytest.mark.asyncio
+async def test_transient_network_fault_unhandled_status_code(
+    mock_node: AgentNodeProfile, mock_ledger: EpistemicLedgerState, mock_action_space: ActionSpaceManifest
+) -> None:
+    # First call yields 404 which is not handled by transient fault logic
+    responses = [""]
+    status_codes = [404]
+
+    adapter = HttpFaultAdapter(responses, status_codes)
+    engine = InferenceEngine(adapter)
+
+    with pytest.raises(httpx.HTTPStatusError):
+        await engine.generate_intent(
+            node=mock_node, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
+        )

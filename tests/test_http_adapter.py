@@ -7,7 +7,7 @@
 # Commercial use beyond a 30-day trial requires a separate license.
 
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
@@ -33,7 +33,7 @@ async def test_base_http_adapter_ssrf_validation_failure() -> None:
 @pytest.mark.asyncio
 async def test_base_http_adapter_success(mock_adapter: BaseHttpAdapter) -> None:
     mock_response = AsyncMock()
-    mock_response.raise_for_status.return_value = None
+    mock_response.raise_for_status = MagicMock(return_value=None)
 
     # Mock stream response lines
     async def mock_aiter_lines() -> Any:
@@ -134,7 +134,7 @@ async def test_base_http_adapter_prepare_request_payload(mock_adapter: BaseHttpA
 @pytest.mark.asyncio
 async def test_base_http_adapter_stream_response_decode_error(mock_adapter: BaseHttpAdapter) -> None:
     mock_response = AsyncMock()
-    mock_response.raise_for_status.return_value = None
+    mock_response.raise_for_status = MagicMock(return_value=None)
 
     async def mock_aiter_lines() -> Any:
         lines = [

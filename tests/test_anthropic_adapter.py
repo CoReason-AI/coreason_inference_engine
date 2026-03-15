@@ -7,7 +7,7 @@
 # Commercial use beyond a 30-day trial requires a separate license.
 
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -80,7 +80,7 @@ def test_anthropic_adapter_prepare_request_payload(adapter: AnthropicAdapter) ->
 @pytest.mark.asyncio
 async def test_anthropic_adapter_stream_response(adapter: AnthropicAdapter) -> None:
     mock_response = AsyncMock()
-    mock_response.raise_for_status.return_value = None
+    mock_response.raise_for_status = MagicMock(return_value=None)
 
     async def mock_aiter_lines() -> Any:
         lines = [
@@ -123,7 +123,7 @@ async def test_anthropic_adapter_stream_response(adapter: AnthropicAdapter) -> N
 @pytest.mark.asyncio
 async def test_anthropic_adapter_stream_response_decode_error(adapter: AnthropicAdapter) -> None:
     mock_response = AsyncMock()
-    mock_response.raise_for_status.return_value = None
+    mock_response.raise_for_status = MagicMock(return_value=None)
 
     async def mock_aiter_lines() -> Any:
         lines = [

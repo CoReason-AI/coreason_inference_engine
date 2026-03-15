@@ -1,0 +1,5 @@
+**Pending Work as Atomic Units:**
+
+1. Implement Fail-Fast incremental JSON parsing of the chunk stream (using ijson) to abort early if `CognitiveFormatContract` is structurally violated mid-stream. (As stated in FR-3.2, "If the provider supports structured JSON streaming, the engine SHOULD utilize an incremental JSON parser (e.g., ijson). If a structural key violates the CognitiveFormatContract mid-stream, the engine MAY sever the stream early...")
+2. Modify SSE token tracking fallback on severed streams: "If the TCP socket is actively preempted, the final include_usage chunk will not arrive. The engine MUST fallback to its local LLMAdapterProtocol.count_tokens() method on the partially generated string. To prevent strict tokenizers... engine MUST decode the byte buffer using errors='replace' or errors='ignore' prior to tokenization."
+3. Implement transient network fault backoff and yield (SLA contention): Trap 429/502/503 inside the `InferenceEngine.generate_intent()` function. Calculate exponential backoff and verify against Orchestrator's `global_timeout_seconds`. Yield an InferenceConvergenceError if SLA is exceeded.

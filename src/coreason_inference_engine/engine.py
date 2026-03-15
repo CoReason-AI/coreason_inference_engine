@@ -124,6 +124,103 @@ class InferenceEngine(InferenceEngineProtocol):
         # Placeholder
         return input_tokens + output_tokens
 
+    async def _evaluate_system1_reflex(
+        self,
+        node: AgentNodeProfile,
+        ledger: EpistemicLedgerState,
+        _node_id: str,
+        action_space: ActionSpaceManifest,
+    ) -> tuple[AnyIntent | None, TokenBurnReceipt | None, LatentScratchpadReceipt | None, int, int]:
+        """
+        Executes the System 1 Fast-Path. Restricts tools to `allowed_passive_tools`.
+        If the model yields a valid ToolInvocationEvent within the subset, returns it immediately.
+        Otherwise, returns None to fallback to standard deep generation.
+        """
+        assert node.reflex_policy is not None
+        allowed_tools = set(node.reflex_policy.allowed_passive_tools)
+
+        # Filter action space native tools to only allowed passive tools
+        passive_tools = [t for t in action_space.native_tools if t.tool_name in allowed_tools]
+        if not passive_tools:
+            return None, None, None, 0, 0
+
+        # Build messages for the fast-path (we use standard hydration but inject a strict directive)
+        messages = self._apply_semantic_slicing(node, ledger)
+
+        directive = (
+            f"AGENT INSTRUCTION: System 1 Fast-Path active. You MUST evaluate if you can solve the current "
+            f"objective using ONLY the provided passive tools. Your confidence MUST be >= "
+            f"{node.reflex_policy.confidence_threshold}. If you meet this threshold, invoke the tool immediately. "
+            f"If not, return a standard InformationalIntent stating you need more time, triggering deep reasoning."
+        )
+
+        # Inject directive into the system prompt (the first message)
+        if messages and messages[0]["role"] in ("system", "developer"):
+            messages[0]["content"] = f"{messages[0]['content']}\n\n{directive}"
+        else:
+            messages.insert(0, {"role": "system", "content": directive})
+
+        tools = self.adapter.project_tools([t.model_dump() for t in passive_tools])
+
+        total_input_tokens = 0
+        total_output_tokens = 0
+        raw_output = ""
+        usage_metrics = {"input_tokens": 0, "output_tokens": 0}
+
+        try:
+            # We enforce a strict token clamp (e.g. 150 tokens) for the fast path to prevent costly generation
+            stream = self.adapter.generate_stream(messages, tools, temperature=0.0, max_tokens=150)
+            async for chunk, usage in stream:
+                raw_output += chunk
+                if usage:
+                    usage_metrics = usage
+
+            in_tokens = usage_metrics.get("input_tokens", 0)
+            if not in_tokens:
+                safe_input = json.dumps(messages).encode("utf-8", errors="replace").decode("utf-8")
+                in_tokens = self.adapter.count_tokens(safe_input)
+
+            out_tokens = usage_metrics.get("output_tokens", 0)
+            if not out_tokens:
+                safe_output = raw_output.encode("utf-8", errors="replace").decode("utf-8")
+                out_tokens = self.adapter.count_tokens(safe_output)
+
+            total_input_tokens += in_tokens
+            total_output_tokens += out_tokens
+
+            clean_json_str, scratchpad = self._extract_latent_traces(raw_output, node)
+            target_schema_key = self._determine_target_schema(node)
+
+            # Validate payload
+            valid_intent = validate_payload(target_schema_key, clean_json_str.encode("utf-8", errors="replace"))
+
+            # Fast-path only succeeds if it invokes an allowed passive tool
+            if isinstance(valid_intent, ToolInvocationEvent) and valid_intent.tool_name in allowed_tools:
+                invocation_cid = valid_intent.event_id
+                burn_receipt = TokenBurnReceipt(
+                    event_id=f"burn_{uuid.uuid4().hex[:8]}",
+                    timestamp=time.time(),
+                    tool_invocation_id=invocation_cid,
+                    input_tokens=total_input_tokens,
+                    output_tokens=total_output_tokens,
+                    burn_magnitude=self._calculate_cost(total_input_tokens, total_output_tokens),
+                )
+                return (
+                    cast("AnyIntent", valid_intent),
+                    burn_receipt,
+                    scratchpad,
+                    total_input_tokens,
+                    total_output_tokens,
+                )
+
+        except ValidationError:
+            # If the fast path fails (e.g. invalid JSON or structural error), we silently fallback
+            pass
+        except Exception:  # noqa: S110
+            pass
+
+        return None, None, None, total_input_tokens, total_output_tokens
+
     def _apply_semantic_slicing(self, node: AgentNodeProfile, ledger: EpistemicLedgerState) -> list[dict[str, Any]]:
         """
         Applies semantic slicing policy to prevent context window overflow.
@@ -210,8 +307,19 @@ class InferenceEngine(InferenceEngineProtocol):
             return error_intent, receipt, None
 
         async with self._semaphore:
-            # FR-1.2.5: System 1 Fast-Path Evaluation (TODO: implementation logic omitted for this skeleton)
-            # if node.reflex_policy: ...
+            total_input_tokens = 0
+            total_output_tokens = 0
+
+            # FR-1.2.5: System 1 Fast-Path Evaluation
+            if node.reflex_policy:
+                fast_intent, fast_receipt, fast_scratch, fast_in, fast_out = await self._evaluate_system1_reflex(
+                    node, ledger, node_id, action_space
+                )
+                total_input_tokens += fast_in
+                total_output_tokens += fast_out
+
+                if fast_intent is not None and fast_receipt is not None:
+                    return fast_intent, fast_receipt, fast_scratch
 
             # FR-1.3 & FR-2.5: Context Compilation & Semantic Slicing
             messages = self._apply_semantic_slicing(node, ledger)
@@ -221,8 +329,6 @@ class InferenceEngine(InferenceEngineProtocol):
             tools = self.adapter.project_tools([t.model_dump() for t in action_space.native_tools])
 
             max_loops = node.correction_policy.max_loops if node.correction_policy else 3
-            total_input_tokens = 0
-            total_output_tokens = 0
 
             # Apply PEFT adapters if requested
             if node.peft_adapters:

@@ -142,6 +142,126 @@ def test_context_hydrator_role_mapping() -> None:
     assert "Fix the parameter" in messages[4]["content"]
 
 
+def test_context_hydrator_o1_mapping() -> None:
+    hydrator = ContextHydrator(provider_mode="o1")
+    node = AgentNodeProfile(description="System instructions.", type="agent")
+
+    # We will simulate a System2RemediationIntent inside the compile
+    # but we can also just test the standard history
+    ledger = EpistemicLedgerState(history=[])
+
+    rem1 = System2RemediationIntent(
+        fault_id="fault_1",
+        target_node_id="did:coreason:agent:mock123",
+        failing_pointers=["/foo/bar"],
+        remediation_prompt="Fix the parameter.",
+    )
+
+    from typing import Any, cast
+
+    ledger.history.append(cast("Any", rem1))
+
+    messages = hydrator.compile(node, ledger)
+
+    assert len(messages) == 2
+    assert messages[0]["role"] == "developer"
+    assert messages[0]["content"] == "System instructions."
+    assert messages[1]["role"] == "developer"
+    assert "Fix the parameter" in messages[1]["content"]
+
+
+def test_context_hydrator_anthropic_mapping() -> None:
+    hydrator = ContextHydrator(provider_mode="anthropic")
+    node = AgentNodeProfile(description="System instructions.", type="agent")
+
+    obs1 = ObservationEvent(
+        event_id="obs_1",
+        timestamp=100.0,
+        payload={"data": "Initial observation"},
+    )
+    obs2 = ObservationEvent(
+        event_id="obs_2",
+        timestamp=101.0,
+        payload={"data": "Second observation"},
+    )
+    tool_inv1 = ToolInvocationEvent(
+        event_id="tool_1",
+        timestamp=110.0,
+        tool_name="test_tool",
+        parameters={"arg1": "value1"},
+        agent_attestation=create_mock_attestation(),
+        zk_proof=create_mock_zk_proof(),
+    )
+    tool_inv2 = ToolInvocationEvent(
+        event_id="tool_2",
+        timestamp=111.0,
+        tool_name="test_tool2",
+        parameters={"arg2": "value2"},
+        agent_attestation=create_mock_attestation(),
+        zk_proof=create_mock_zk_proof(),
+    )
+
+    # Sequence: Obs1, Obs2 -> Collapsed User
+    # ToolInv1, ToolInv2 -> Consecutive Assistants -> Inject dummy user in between
+    # Trailing ToolInv2 -> Inject trailing dummy user
+    # Add an empty tool response (observation) mapped to tool result
+
+    obs_tool = ObservationEvent(
+        event_id="obs_3", timestamp=110.5, payload={"data": "ToolResult"}, triggering_invocation_id="tool_1"
+    )
+
+    # Let's test consecutive assistants first without tool response
+    ledger_consecutive = EpistemicLedgerState(history=[obs1, obs2, tool_inv1, tool_inv2])
+    messages = hydrator.compile(node, ledger_consecutive)
+
+    assert messages[0]["role"] == "system"
+    assert messages[0]["content"] == "System instructions."
+
+    assert messages[1]["role"] == "user"
+    # Should contain XML tags since it's collapsed
+    assert "<observation>" in messages[1]["content"]
+    assert "Initial observation" in messages[1]["content"]
+    assert "Second observation" in messages[1]["content"]
+
+    assert messages[2]["role"] == "assistant"
+    assert messages[2]["tool_calls"][0]["id"] == "tool_1"
+
+    assert messages[3]["role"] == "user"
+    assert "Dummy acknowledgment" in messages[3]["content"]
+
+    assert messages[4]["role"] == "assistant"
+    assert messages[4]["tool_calls"][0]["id"] == "tool_2"
+
+    assert messages[5]["role"] == "user"
+    assert "Please continue or provide the next action." in messages[5]["content"]
+
+    assert len(messages) == 6
+
+    # Now let's test with the tool response interleaved
+    ledger_with_tool = EpistemicLedgerState(history=[obs1, obs2, tool_inv1, obs_tool, tool_inv2])
+    messages_tool = hydrator.compile(node, ledger_with_tool)
+
+    assert messages_tool[3]["role"] == "user"
+    assert "Tool tool_1 Result:" in messages_tool[3]["content"]
+
+    assert messages_tool[4]["role"] == "assistant"
+    assert messages_tool[4]["tool_calls"][0]["id"] == "tool_2"
+
+    assert messages_tool[5]["role"] == "user"
+    assert "Please continue or provide the next action." in messages_tool[5]["content"]
+
+    assert len(messages_tool) == 6
+
+
+def test_context_hydrator_anthropic_empty_messages() -> None:
+    hydrator = ContextHydrator(provider_mode="anthropic")
+    # if messages list is empty, it returns immediately
+    # A compile with no description? AgentNodeProfile requires description.
+    # To test the `if not messages:` check in `_apply_anthropic_grammar`,
+    # we can call it directly.
+    assert hydrator._apply_anthropic_grammar([]) == []
+
+
 def test_context_hydrator_quarantine() -> None:
     hydrator = ContextHydrator()
     node = AgentNodeProfile(description="System instructions.", type="agent")

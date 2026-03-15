@@ -31,6 +31,7 @@ class DummyAdapter(LLMAdapterProtocol):
         self.call_count = 0
         self.applied_peft = False
         self.tools_projected = False
+        self.max_tokens_received: list[int | None] = []
 
     def count_tokens(self, _text: str) -> int:
         return len(_text)
@@ -48,9 +49,11 @@ class DummyAdapter(LLMAdapterProtocol):
         _tools: list[dict[str, Any]],
         temperature: float,
         logit_biases: dict[int, float] | None = None,
+        max_tokens: int | None = None,
     ) -> AsyncGenerator[tuple[str, dict[str, int]]]:
         _ = temperature
         _ = logit_biases
+        self.max_tokens_received.append(max_tokens)
         if self.call_count >= len(self.responses):
             yield "", {"input_tokens": 0, "output_tokens": 0}
             return
@@ -104,6 +107,30 @@ async def test_successful_generation(
     assert receipt.output_tokens == 10
     assert receipt.burn_magnitude == 20
     assert adapter.tools_projected is True
+
+
+@pytest.mark.asyncio
+async def test_economic_dos_token_clamping(
+    mock_node: AgentNodeProfile, mock_ledger: EpistemicLedgerState, mock_action_space: ActionSpaceManifest
+) -> None:
+    """Verifies that the remediation loop injects a strict max_tokens clamp (e.g., 500) to prevent Economic DoS."""
+    # 1st response: Invalid (triggers remediation)
+    invalid_intent_json = '{"type": "informational"}'
+    # 2nd response: Valid
+    valid_intent_json = '{"type": "informational", "message": "fixed", "timeout_action": "proceed_default"}'
+
+    adapter = DummyAdapter(responses=[invalid_intent_json, valid_intent_json])
+    engine = InferenceEngine(adapter)
+
+    await engine.generate_intent(
+        node=mock_node, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
+    )
+
+    assert len(adapter.max_tokens_received) == 2
+    # First attempt: None
+    assert adapter.max_tokens_received[0] is None
+    # Second attempt (remediation): strictly clamped to 500
+    assert adapter.max_tokens_received[1] == 500
 
 
 @pytest.mark.asyncio
@@ -162,9 +189,11 @@ class CancellingAdapter(LLMAdapterProtocol):
         _tools: list[dict[str, Any]],
         temperature: float,
         logit_biases: dict[int, float] | None = None,
+        max_tokens: int | None = None,
     ) -> AsyncGenerator[tuple[str, dict[str, int]]]:
         _ = temperature
         _ = logit_biases
+        _ = max_tokens
         yield "start", {"input_tokens": 5, "output_tokens": 0}
         raise asyncio.CancelledError("Preempted")
 

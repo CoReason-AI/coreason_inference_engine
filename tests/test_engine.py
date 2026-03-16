@@ -218,7 +218,7 @@ async def test_successful_generation(
     # Receipt accumulation test
     assert receipt.input_tokens == 10
     assert receipt.output_tokens == 10
-    assert receipt.burn_magnitude == 20
+    assert receipt.burn_magnitude == 20000000
     assert adapter.tools_projected is True
 
 
@@ -343,7 +343,7 @@ async def test_remediation_loop_success(
     # 1st call: 10 in, 10 out. 2nd call: 10 in, 10 out. Total 20/20.
     assert receipt.input_tokens == 20
     assert receipt.output_tokens == 20
-    assert receipt.burn_magnitude == 40
+    assert receipt.burn_magnitude == 40000000
 
 
 @pytest.mark.asyncio

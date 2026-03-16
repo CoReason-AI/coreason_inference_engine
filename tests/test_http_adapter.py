@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
+from coreason_manifest.spec.ontology import PeftAdapterContract
 
 from coreason_inference_engine.adapters.http_adapter import BaseHttpAdapter
 from coreason_inference_engine.utils.network import SSRFValidationError
@@ -165,3 +166,53 @@ async def test_base_http_adapter_stream_response_decode_error(mock_adapter: Base
         # no valid json, chunks should be empty (though we might yield empty strings based on current naive parsing)
         # actually, json decode error does a pass, so it won't yield
         assert chunks == []
+
+
+@pytest.mark.asyncio
+async def test_base_http_adapter_apply_peft_adapters_success(mock_adapter: BaseHttpAdapter) -> None:
+    adapter1 = MagicMock(spec=PeftAdapterContract)
+    adapter1.adapter_id = "lora-1"
+    adapter1.huggingface_repo_id = "org/model1"
+
+    mock_response = AsyncMock()
+    mock_response.raise_for_status = MagicMock()
+
+    with (
+        patch(
+            "coreason_inference_engine.adapters.http_adapter.validate_url_for_ssrf", new_callable=AsyncMock
+        ) as mock_validate,
+        patch.object(mock_adapter.client, "post", return_value=mock_response) as mock_post,
+    ):
+        await mock_adapter.apply_peft_adapters([adapter1])
+
+        mock_validate.assert_called_once_with("https://api.openai.com/v1/adapters/load")
+        mock_post.assert_called_once_with(
+            "https://api.openai.com/v1/adapters/load",
+            json={"adapter_name": "lora-1", "remote_path": "org/model1"},
+            headers={"Authorization": "Bearer test_key", "Content-Type": "application/json"},
+        )
+        mock_response.raise_for_status.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_base_http_adapter_apply_peft_adapters_failure(mock_adapter: BaseHttpAdapter) -> None:
+    adapter1 = PeftAdapterContract(
+        adapter_id="lora-1",
+        safetensors_hash="1" * 64,
+        base_model_hash="2" * 64,
+        target_modules=["q", "v"],
+        adapter_rank=8,
+        eviction_ttl_seconds=3600,
+    )
+
+    mock_response = AsyncMock()
+    mock_response.raise_for_status = MagicMock(
+        side_effect=httpx.HTTPStatusError("Error", request=MagicMock(), response=MagicMock())
+    )
+
+    with (
+        patch("coreason_inference_engine.adapters.http_adapter.validate_url_for_ssrf", new_callable=AsyncMock),
+        patch.object(mock_adapter.client, "post", return_value=mock_response),
+        pytest.raises(RuntimeError, match="Hardware PEFT swap failed:"),
+    ):
+        await mock_adapter.apply_peft_adapters([adapter1])

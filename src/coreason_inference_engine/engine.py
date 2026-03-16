@@ -8,7 +8,9 @@
 
 import asyncio
 import hashlib
+import hmac
 import json
+import random
 import re
 import time
 import uuid
@@ -54,6 +56,9 @@ class _AnyIntentAdapter:
 
 if "AnyIntent" not in SCHEMA_REGISTRY:
     SCHEMA_REGISTRY["AnyIntent"] = cast("Any", _AnyIntentAdapter())
+    SCHEMA_REGISTRY["intent"] = cast("Any", _AnyIntentAdapter())
+    SCHEMA_REGISTRY["state_differential"] = cast("Any", _AnyIntentAdapter())
+    SCHEMA_REGISTRY["symbolic_handoff"] = cast("Any", _AnyIntentAdapter())
 
 
 class InferenceEngine(InferenceEngineProtocol):
@@ -71,9 +76,36 @@ class InferenceEngine(InferenceEngineProtocol):
         self._semaphore = asyncio.Semaphore(max_concurrent_tasks)
         self.telemetry = telemetry or TelemetryEmitter()
 
-    def _compile_watermark_biases(self, _watermark: Any | None) -> dict[int, float] | None:
-        # Placeholder for steganography contract
-        return None
+    def _compile_watermark_biases(
+        self, contract: Any | None, vocab_size: int = 128000, prior_tokens: list[int] | None = None
+    ) -> dict[int, float] | None:
+        if not contract:
+            return None
+
+        prior_tokens = prior_tokens or []
+
+        # 1. Extract rolling context window to seed the PRF (prevents cropping attacks)
+        window = prior_tokens[-contract.context_history_window :] if contract.context_history_window > 0 else []
+        state_bytes = b"".join(t.to_bytes(4, "big") for t in window)
+
+        # 2. Execute the Pseudo-Random Function (HMAC-SHA256)
+        key = bytes.fromhex(contract.prf_seed_hash)
+        prf_output = hmac.new(key, state_bytes, hashlib.sha256).digest()
+
+        # 3. Seed a deterministic PRNG
+        seed_int = int.from_bytes(prf_output, "big")
+        rng = random.Random(seed_int)  # noqa: S311
+
+        # 4. Partition the vocabulary to create the "Green List"
+        split_ratio = 0.5
+        green_list_size = int(vocab_size * split_ratio)
+
+        all_tokens = list(range(vocab_size))
+        rng.shuffle(all_tokens)
+        green_list = all_tokens[:green_list_size]
+
+        # 5. Apply the logit scalar (bias) exclusively to the Green List
+        return dict.fromkeys(green_list, contract.watermark_strength_delta)
 
     def _extract_latent_traces(
         self, raw_output: str, node: AgentNodeProfile
@@ -123,13 +155,26 @@ class InferenceEngine(InferenceEngineProtocol):
 
         return raw_output, None
 
-    def _determine_target_schema(self, _node: AgentNodeProfile) -> str:
-        # TODO: Return dynamic key based on schema constraints
-        return "AnyIntent"
+    def _determine_target_schema(self, node: AgentNodeProfile) -> str:
+        if node.interventional_policy is not None:
+            return "state_differential"
+
+        if node.symbolic_handoff_policy is not None:
+            return "symbolic_handoff"
+
+        return "intent"
 
     def _calculate_cost(self, input_tokens: int, output_tokens: int) -> int:
-        # Placeholder
-        return input_tokens + output_tokens
+        rate_card = getattr(self.adapter, "rate_card", None)
+        if not rate_card:
+            return input_tokens + output_tokens
+
+        in_cost_standard = (input_tokens * rate_card.cost_per_million_input_tokens) / 1_000_000.0
+        out_cost_standard = (output_tokens * rate_card.cost_per_million_output_tokens) / 1_000_000.0
+
+        total_cost_standard = in_cost_standard + out_cost_standard
+
+        return int(total_cost_standard * 1_000_000)
 
     async def _evaluate_system1_reflex(
         self,
@@ -350,7 +395,7 @@ class InferenceEngine(InferenceEngineProtocol):
             if node.peft_adapters:
                 await self.adapter.apply_peft_adapters(node.peft_adapters)
 
-            logit_biases = self._compile_watermark_biases(node.logit_steganography)
+            logit_biases = self._compile_watermark_biases(node.logit_steganography, vocab_size=128000, prior_tokens=[])
 
             import random
 

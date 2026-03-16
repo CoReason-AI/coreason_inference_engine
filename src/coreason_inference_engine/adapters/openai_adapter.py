@@ -7,10 +7,12 @@
 # Commercial use beyond a 30-day trial requires a separate license.
 
 import json
+import urllib.parse
 from collections.abc import AsyncGenerator
 from typing import Any
 
 import tiktoken
+from coreason_manifest.spec.ontology import PeftAdapterContract
 
 from coreason_inference_engine.adapters.http_adapter import BaseHttpAdapter
 
@@ -75,6 +77,27 @@ class OpenAIAdapter(BaseHttpAdapter):
                     }
                 )
         return openai_tools
+
+    async def apply_peft_adapters(self, adapters: list[PeftAdapterContract]) -> None:
+        if not adapters:
+            return
+
+        parsed = urllib.parse.urlparse(self.api_url)
+        base_url = f"{parsed.scheme}://{parsed.netloc}"
+        mount_url = f"{base_url}/v1/adapters/mount"
+
+        for adapter in adapters:
+            payload = {
+                "adapter_id": adapter.adapter_id,
+                "safetensors_uri": f"s3://coreason-cold-storage/{adapter.safetensors_hash}.safetensors",
+                "base_model_hash": adapter.base_model_hash,
+                "target_modules": adapter.target_modules,
+                "adapter_rank": adapter.adapter_rank,
+                "eviction_ttl_seconds": adapter.eviction_ttl_seconds or 3600,
+            }
+
+            response = await self.client.post(mount_url, json=payload)
+            response.raise_for_status()
 
     def _prepare_request_payload(
         self,

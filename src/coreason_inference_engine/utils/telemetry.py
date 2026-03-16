@@ -12,7 +12,7 @@ import re
 
 from coreason_manifest.spec.ontology import InformationFlowPolicy, LogEvent, SpanTraceReceipt
 
-TelemetryEvent = SpanTraceReceipt | LogEvent
+type TelemetryEvent = SpanTraceReceipt | LogEvent
 
 
 class TelemetryEmitter:

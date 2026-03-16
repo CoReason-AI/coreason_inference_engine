@@ -122,7 +122,7 @@ async def test_reflex_fast_path_success(
         node=node, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
     )
 
-    assert intent.type == "tool_invocation"
+    assert getattr(intent, "type", None) == "tool_invocation"
     assert getattr(intent, "tool_name", None) == "fast_tool"
     assert adapter.call_count == 1
     assert adapter.max_tokens_received == [150]
@@ -161,7 +161,7 @@ async def test_reflex_fast_path_fallback_invalid_intent(
         node=node, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
     )
 
-    assert intent.type == "informational"
+    assert getattr(intent, "type", None) == "informational"
     assert getattr(intent, "message", None) == "Deep thought result"
     assert adapter.call_count == 2
     assert adapter.max_tokens_received == [150, None]
@@ -210,7 +210,7 @@ async def test_reflex_fast_path_fallback_unallowed_tool(
         node=node, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
     )
 
-    assert intent.type == "informational"
+    assert getattr(intent, "type", None) == "informational"
     assert adapter.call_count == 2
 
 
@@ -237,7 +237,7 @@ async def test_reflex_fast_path_empty_passive_tools(
         node=node, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
     )
 
-    assert intent.type == "informational"
+    assert getattr(intent, "type", None) == "informational"
     assert adapter.call_count == 1
     assert adapter.max_tokens_received == [None]
 
@@ -294,7 +294,8 @@ async def test_reflex_fast_path_missing_usage(
     intent, receipt, _scratch = await engine.generate_intent(
         node=node, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
     )
-    assert intent.type == "tool_invocation"
+    assert getattr(intent, "type", None) == "tool_invocation"
+    assert getattr(intent, "type", None) == "tool_invocation"
     assert receipt.output_tokens > 0
 
 
@@ -376,7 +377,7 @@ async def test_reflex_fast_path_system_message_exists(
     intent, _receipt, _scratch = await engine.generate_intent(
         node=node, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
     )
-    assert intent.type == "tool_invocation"
+    assert getattr(intent, "type", None) == "tool_invocation"
 
 
 @pytest.mark.asyncio
@@ -402,5 +403,5 @@ async def test_reflex_fast_path_validation_error(
     intent, _receipt, _scratch = await engine.generate_intent(
         node=node, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
     )
-    assert intent.type == "informational"
+    assert getattr(intent, "type", None) == "informational"
     assert adapter.call_count == 2

@@ -46,6 +46,29 @@ class BaseHttpAdapter(LLMAdapterProtocol):
 
     async def apply_peft_adapters(self, adapters: list[PeftAdapterContract]) -> None:
         """Hot-swaps declarative LoRA/PEFT weights into VRAM on compatible local backends."""
+        if not adapters:
+            return
+
+        management_url = self.api_url.replace("/chat/completions", "/adapters/load")
+
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+
+        for adapter in adapters:
+            await validate_url_for_ssrf(management_url)
+
+            payload = {
+                "adapter_name": adapter.adapter_id,
+                "remote_path": getattr(adapter, "huggingface_repo_id", adapter.adapter_id),
+            }
+
+            try:
+                response = await self.client.post(management_url, json=payload, headers=headers)
+                response.raise_for_status()
+            except (httpx.HTTPStatusError, httpx.RequestError) as e:
+                raise RuntimeError(f"Hardware PEFT swap failed: {e}") from e
 
     def _prepare_request_payload(
         self,

@@ -50,6 +50,7 @@ class DummyInferenceEngine:
 
 
 class DummyLLMAdapter:
+    rate_card: Any = None
     """A dummy implementation of the LLMAdapterProtocol for testing."""
 
     def count_tokens(self, text: str) -> int:

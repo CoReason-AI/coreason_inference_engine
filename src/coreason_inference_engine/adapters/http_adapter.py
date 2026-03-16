@@ -26,6 +26,7 @@ class BaseHttpAdapter(LLMAdapterProtocol):
     def __init__(self, api_url: str, api_key: str, max_connections: int = 1000) -> None:
         self.api_url = api_url
         self.api_key = api_key
+        self.rate_card: Any = None
         # Singleton Transport & SSRF Firewall: explicitly bounded limits
         limits = httpx.Limits(max_connections=max_connections, max_keepalive_connections=max_connections)
         self.client = httpx.AsyncClient(limits=limits, timeout=httpx.Timeout(60.0))

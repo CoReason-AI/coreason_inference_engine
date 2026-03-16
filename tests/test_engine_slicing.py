@@ -25,6 +25,7 @@ from coreason_inference_engine.interfaces import LLMAdapterProtocol
 
 
 class TokenCountingAdapter(LLMAdapterProtocol):
+    rate_card: Any = None
     """An adapter where each char is 1 token to easily test ceiling bounds."""
 
     def count_tokens(self, text: str) -> int:

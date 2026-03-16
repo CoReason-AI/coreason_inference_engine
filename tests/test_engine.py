@@ -28,6 +28,8 @@ from coreason_inference_engine.interfaces import InferenceConvergenceError, LLMA
 
 
 class DummyAdapter(LLMAdapterProtocol):
+    rate_card: Any = None
+
     def __init__(self, responses: list[str]) -> None:
         self.responses = responses
         self.call_count = 0
@@ -67,6 +69,8 @@ class DummyAdapter(LLMAdapterProtocol):
 
 
 class SeveredStreamAdapter(LLMAdapterProtocol):
+    rate_card: Any = None
+
     def __init__(self, response: str) -> None:
         self.response = response
         self.tools_projected = False
@@ -125,6 +129,8 @@ async def test_ijson_early_termination(
     """Verifies that the engine severs the stream early using ijson if the structure violates expected bounds."""
 
     class StreamingAdapter(LLMAdapterProtocol):
+        rate_card: Any = None
+
         def __init__(self) -> None:
             self.aclose_called = False
             self.stream_ended = False
@@ -225,6 +231,8 @@ async def test_generate_intent_ttft_concurrency(
     valid_intent_json = '{"type": "informational", "message": "concurrency", "timeout_action": "proceed_default"}'
 
     class DelayingAdapter(LLMAdapterProtocol):
+        rate_card: Any = None
+
         def count_tokens(self, _text: str) -> int:
             return 10
 
@@ -369,6 +377,8 @@ class MockAsyncGenerator:
 
 
 class CancellingAdapter(LLMAdapterProtocol):
+    rate_card: Any = None
+
     def __init__(self) -> None:
         self.mock_generator = MockAsyncGenerator()
 
@@ -623,6 +633,8 @@ def test_anyintent_adapter_includes_missing_intents() -> None:
 
 
 class HttpFaultAdapter(LLMAdapterProtocol):
+    rate_card: Any = None
+
     def __init__(self, responses: list[str], status_codes: list[int]) -> None:
         self.responses = responses
         self.status_codes = status_codes
@@ -720,6 +732,8 @@ async def test_transient_network_fault_sla_exceeded(
 
 
 class HttpFaultMidStreamAdapter(LLMAdapterProtocol):
+    rate_card: Any = None
+
     def __init__(self, responses: list[str], status_codes: list[int]) -> None:
         self.responses = responses
         self.status_codes = status_codes
@@ -781,6 +795,8 @@ async def test_transient_network_fault_mid_stream(
     mock_node: AgentNodeProfile, mock_ledger: EpistemicLedgerState, mock_action_space: ActionSpaceManifest
 ) -> None:
     class MidStreamFaultAdapter(LLMAdapterProtocol):
+        rate_card: Any = None
+
         def __init__(self) -> None:
             self.call_count = 0
 
@@ -834,6 +850,8 @@ async def test_transient_network_fault_mid_stream_sla_exceeded(
     mock_node: AgentNodeProfile, mock_ledger: EpistemicLedgerState, mock_action_space: ActionSpaceManifest
 ) -> None:
     class MidStreamFaultAdapter(LLMAdapterProtocol):
+        rate_card: Any = None
+
         def __init__(self) -> None:
             self.call_count = 0
 

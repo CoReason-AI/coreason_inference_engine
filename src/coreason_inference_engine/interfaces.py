@@ -46,6 +46,7 @@ class InferenceEngineProtocol(Protocol):
 
 
 class LLMAdapterProtocol(Protocol):
+    rate_card: Any
     """Protocol for LLM provider adapters."""
 
     def count_tokens(self, text: str) -> int:

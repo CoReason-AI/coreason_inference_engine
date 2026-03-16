@@ -5,11 +5,11 @@
 # A copy of the license is available at https://prosperitylicense.com/versions/3.0.0
 # For details, see the LICENSE file.
 # Commercial use beyond a 30-day trial requires a separate license.
-
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from coreason_manifest.spec.ontology import PeftAdapterContract
 
 from coreason_inference_engine.adapters.openai_adapter import OpenAIAdapter
 
@@ -151,3 +151,51 @@ async def test_openai_adapter_stream_response_decode_error_and_empty(adapter: Op
             chunks.append(chunk)
 
         assert chunks == []
+
+
+@pytest.mark.asyncio
+async def test_openai_adapter_apply_peft_adapters(adapter: OpenAIAdapter) -> None:
+    # Test early return
+    await adapter.apply_peft_adapters([])
+
+    mock_response = AsyncMock()
+    mock_response.raise_for_status = MagicMock(return_value=None)
+
+    contract = PeftAdapterContract(
+        adapter_id="test_adapter",
+        safetensors_hash="0" * 64,
+        base_model_hash="1" * 64,
+        adapter_rank=16,
+        target_modules=["q_proj", "v_proj"],
+        eviction_ttl_seconds=300,
+    )
+
+    with patch.object(adapter.client, "post", return_value=mock_response) as mock_post:
+        await adapter.apply_peft_adapters([contract])
+        mock_post.assert_called_once()
+        args, kwargs = mock_post.call_args
+        assert args[0] == "https://api.openai.com/v1/adapters/mount"
+        assert kwargs["json"]["adapter_id"] == "test_adapter"
+        assert kwargs["json"]["safetensors_uri"] == f"s3://coreason-cold-storage/{'0' * 64}.safetensors"
+        assert kwargs["json"]["eviction_ttl_seconds"] == 300
+
+
+@pytest.mark.asyncio
+async def test_openai_adapter_apply_peft_adapters_fallback_ttl(adapter: OpenAIAdapter) -> None:
+    mock_response = AsyncMock()
+    mock_response.raise_for_status = MagicMock(return_value=None)
+
+    contract = PeftAdapterContract(
+        adapter_id="test_adapter2",
+        safetensors_hash="2" * 64,
+        base_model_hash="3" * 64,
+        adapter_rank=8,
+        target_modules=["q_proj"],
+        eviction_ttl_seconds=None,
+    )
+
+    with patch.object(adapter.client, "post", return_value=mock_response) as mock_post:
+        await adapter.apply_peft_adapters([contract])
+        mock_post.assert_called_once()
+        _, kwargs = mock_post.call_args
+        assert kwargs["json"]["eviction_ttl_seconds"] == 3600

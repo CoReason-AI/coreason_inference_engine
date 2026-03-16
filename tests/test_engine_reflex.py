@@ -18,6 +18,8 @@ from coreason_inference_engine.interfaces import InferenceConvergenceError, LLMA
 
 
 class DummyReflexAdapter(LLMAdapterProtocol):
+    rate_card: Any = None
+
     def __init__(self, responses: list[str]) -> None:
         self.responses = responses
         self.call_count = 0

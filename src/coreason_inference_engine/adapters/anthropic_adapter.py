@@ -10,6 +10,8 @@ import json
 from collections.abc import AsyncGenerator
 from typing import Any
 
+import tiktoken
+
 from coreason_inference_engine.adapters.http_adapter import BaseHttpAdapter
 
 
@@ -24,13 +26,13 @@ class AnthropicAdapter(BaseHttpAdapter):
     ) -> None:
         super().__init__(api_url, api_key, max_connections)
         self.model_name = model_name
+        self._encoding = tiktoken.get_encoding("cl100k_base")
 
     def count_tokens(self, text: str | bytes) -> int:
-        """Synchronously calculates token mass. Fallback to length-based approximation since BPE isn't installed."""
+        """Synchronously calculates token mass. Uses tiktoken cl100k_base for fallback accuracy."""
         if isinstance(text, bytes):
             text = text.decode("utf-8", errors="replace")
-        # Approximate 4 characters per token
-        return max(1, len(text) // 4)
+        return len(self._encoding.encode(text, disallowed_special=()))
 
     def project_tools(self, schemas: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Translates JSON Schema dictionaries into Anthropic's native tool array format."""

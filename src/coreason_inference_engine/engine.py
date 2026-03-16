@@ -23,7 +23,9 @@ from coreason_manifest.spec.ontology import (
     JSONRPCErrorResponseState,
     JSONRPCErrorState,
     LatentScratchpadReceipt,
+    LogEvent,
     ObservationEvent,
+    SpanTraceReceipt,
     StateMutationIntent,
     System2RemediationIntent,
     ThoughtBranchState,
@@ -39,7 +41,7 @@ from coreason_inference_engine.interfaces import (
     InferenceEngineProtocol,
     LLMAdapterProtocol,
 )
-from coreason_inference_engine.utils.logger import logger
+from coreason_inference_engine.utils.telemetry import TelemetryEmitter
 
 
 class _AnyIntentAdapter:
@@ -58,11 +60,16 @@ class InferenceEngine(InferenceEngineProtocol):
     """The stateless cognitive bridge connecting deterministic rules to LLMs."""
 
     def __init__(
-        self, adapter: LLMAdapterProtocol, hydrator: ContextHydrator | None = None, max_concurrent_tasks: int = 1000
+        self,
+        adapter: LLMAdapterProtocol,
+        hydrator: ContextHydrator | None = None,
+        max_concurrent_tasks: int = 1000,
+        telemetry: TelemetryEmitter | None = None,
     ) -> None:
         self.adapter = adapter
         self.hydrator = hydrator or ContextHydrator()
         self._semaphore = asyncio.Semaphore(max_concurrent_tasks)
+        self.telemetry = telemetry or TelemetryEmitter()
 
     def _compile_watermark_biases(self, _watermark: Any | None) -> dict[int, float] | None:
         # Placeholder for steganography contract
@@ -284,8 +291,17 @@ class InferenceEngine(InferenceEngineProtocol):
             asyncio.CancelledError: If preempted by the Orchestrator.
         """
         # CRITICAL FIX: Deadlock Prevention via Local Backpressure
+        start_time_unix_nano = time.time_ns()
         if self._semaphore.locked():
-            logger.warning("Semaphore saturated, yielding 429 JSONRPCErrorResponseState", node_id=node_id)
+            # Emit telemetry for starvation
+            await self.telemetry.emit(
+                LogEvent(
+                    timestamp=time.time(),
+                    level="WARNING",
+                    message="Semaphore saturated, yielding 429 JSONRPCErrorResponseState",
+                    context_profile={"node_id": node_id},
+                )
+            )
             error_intent = cast(
                 "AnyIntent",
                 JSONRPCErrorResponseState(
@@ -367,7 +383,12 @@ class InferenceEngine(InferenceEngineProtocol):
 
                     try:
                         # FR-1.6 / FR-2.6: Active Preemption Check & Stream Consumption
+                        self._ttft = 0
+                        first_chunk = True
                         async for chunk, usage in stream:
+                            if first_chunk and chunk:
+                                self._ttft = time.time_ns() - start_time_unix_nano
+                                first_chunk = False
                             raw_output += chunk
                             if usage:
                                 usage_metrics = usage
@@ -478,6 +499,22 @@ class InferenceEngine(InferenceEngineProtocol):
                     invocation_cid = valid_intent.event_id if isinstance(valid_intent, ToolInvocationEvent) else None
 
                     # Build tracking receipt
+                    end_time_unix_nano = time.time_ns()
+
+                    ttft = 0
+                    if hasattr(self, "_ttft"):
+                        ttft = self._ttft
+
+                    span = SpanTraceReceipt(
+                        span_id=f"span_{uuid.uuid4().hex[:8]}",
+                        parent_span_id=None,
+                        start_time=start_time_unix_nano,
+                        end_time=end_time_unix_nano,
+                        status="OK",
+                        context_profile={"node_id": node_id, "ttft_nano": ttft},
+                    )
+                    await self.telemetry.emit(span)
+
                     burn_receipt = TokenBurnReceipt(
                         event_id=f"burn_{uuid.uuid4().hex[:8]}",
                         timestamp=time.time(),
@@ -496,15 +533,31 @@ class InferenceEngine(InferenceEngineProtocol):
                     # CRITICAL: Pass exact DID string (node_id) to prevent remediation crash
                     remediation = generate_correction_prompt(error=e, target_node_id=node_id, fault_id=fault_id)
 
+                    # Redact raw output
+                    redacted_output = self.telemetry.redact_pii(
+                        raw_output, getattr(node, "information_flow_policy", None)
+                    )
+
+                    await self.telemetry.emit(
+                        LogEvent(
+                            timestamp=time.time(),
+                            level="DEBUG",
+                            message="Hallucinated structural violation",
+                            context_profile={"raw_output": redacted_output},
+                        )
+                    )
+
                     # Inject prompt and retry
                     messages.append({"role": "assistant", "content": raw_output})
                     messages.append({"role": "user", "content": remediation.model_dump_json()})
 
-                    logger.warning(
-                        "Validation error during generation; entering remediation loop",
-                        attempt=attempt,
-                        max_loops=max_loops,
-                        error=str(e),
+                    await self.telemetry.emit(
+                        LogEvent(
+                            timestamp=time.time(),
+                            level="WARNING",
+                            message="Validation error during generation; entering remediation loop",
+                            context_profile={"attempt": attempt, "max_loops": max_loops, "error": str(e)},
+                        )
                     )
                     attempt += 1  # Increment attempt on ValidationError
                 except asyncio.CancelledError:

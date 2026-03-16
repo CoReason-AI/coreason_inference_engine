@@ -217,6 +217,80 @@ async def test_successful_generation(
 
 
 @pytest.mark.asyncio
+async def test_generate_intent_ttft_concurrency(
+    mock_node: AgentNodeProfile, mock_ledger: EpistemicLedgerState, mock_action_space: ActionSpaceManifest
+) -> None:
+    """Verifies that ttft and span traces are tracked safely via local variables in a concurrent TaskGroup fan-out."""
+    # We will simulate the LLM responding with a valid Intent, and block slightly to ensure overlapping execution.
+    valid_intent_json = '{"type": "informational", "message": "concurrency", "timeout_action": "proceed_default"}'
+
+    class DelayingAdapter(LLMAdapterProtocol):
+        def count_tokens(self, _text: str) -> int:
+            return 10
+
+        def project_tools(self, schemas: list[dict[str, Any]]) -> list[dict[str, Any]]:
+            return schemas
+
+        async def apply_peft_adapters(self, _adapters: list[PeftAdapterContract]) -> None:
+            pass
+
+        async def generate_stream(
+            self,
+            messages: list[dict[str, Any]],
+            tools: list[dict[str, Any]],
+            temperature: float,
+            logit_biases: dict[int, float] | None = None,
+            max_tokens: int | None = None,
+        ) -> AsyncGenerator[tuple[str, dict[str, int]]]:
+            _ = messages
+            _ = tools
+            _ = temperature
+            _ = logit_biases
+            _ = max_tokens
+            await asyncio.sleep(0.01)  # Yield to event loop, forcing concurrency
+            yield valid_intent_json, {"input_tokens": 10, "output_tokens": 10}
+
+    adapter = DelayingAdapter()
+
+    # Create a custom queue telemetry emitter to capture the spans
+    class SpanCollectorEmitter:
+        def __init__(self) -> None:
+            self.spans: list[Any] = []
+
+        async def emit(self, event: Any) -> None:
+            from coreason_manifest.spec.ontology import SpanTraceReceipt
+
+            if isinstance(event, SpanTraceReceipt):
+                self.spans.append(event)
+
+        def redact_pii(self, payload: str, _policy: Any) -> str:
+            return payload
+
+    emitter = SpanCollectorEmitter()
+    engine = InferenceEngine(adapter, telemetry=emitter)  # type: ignore
+
+    # Fan out 10 concurrent requests
+    tasks = [
+        engine.generate_intent(
+            node=mock_node, ledger=mock_ledger, node_id=f"did:test:{i}", action_space=mock_action_space
+        )
+        for i in range(10)
+    ]
+
+    results = await asyncio.gather(*tasks)
+
+    assert len(results) == 10
+    assert len(emitter.spans) == 10
+
+    # Ensure all span traces have valid ttft
+    for span in emitter.spans:
+        assert "ttft_nano" in span.context_profile
+        ttft = span.context_profile["ttft_nano"]
+        assert isinstance(ttft, int)
+        assert ttft > 0  # Must have elapsed some time
+
+
+@pytest.mark.asyncio
 async def test_economic_dos_token_clamping(
     mock_node: AgentNodeProfile, mock_ledger: EpistemicLedgerState, mock_action_space: ActionSpaceManifest
 ) -> None:

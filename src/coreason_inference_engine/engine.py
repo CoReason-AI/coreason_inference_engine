@@ -383,11 +383,11 @@ class InferenceEngine(InferenceEngineProtocol):
 
                     try:
                         # FR-1.6 / FR-2.6: Active Preemption Check & Stream Consumption
-                        self._ttft = 0
+                        ttft = 0
                         first_chunk = True
                         async for chunk, usage in stream:
                             if first_chunk and chunk:
-                                self._ttft = time.time_ns() - start_time_unix_nano
+                                ttft = time.time_ns() - start_time_unix_nano
                                 first_chunk = False
                             raw_output += chunk
                             if usage:
@@ -500,10 +500,6 @@ class InferenceEngine(InferenceEngineProtocol):
 
                     # Build tracking receipt
                     end_time_unix_nano = time.time_ns()
-
-                    ttft = 0
-                    if hasattr(self, "_ttft"):
-                        ttft = self._ttft
 
                     span = SpanTraceReceipt(
                         span_id=f"span_{uuid.uuid4().hex[:8]}",

@@ -1,5 +1,22 @@
-**Pending Work as Atomic Units:**
+1. Comprehensive Analysis: The current implementation of `InferenceEngine` correctly implements most of the requested architecture, but there is a critical violation regarding instance state concurrency. The engine stores request-scoped metric `Time To First Token` (TTFT) as `self._ttft`. Since `InferenceEngine` processes massive asynchronous fan-outs simultaneously, maintaining request state on the instance will result in cross-talk and race conditions.
 
-1. Implement Fail-Fast incremental JSON parsing of the chunk stream (using ijson) to abort early if `CognitiveFormatContract` is structurally violated mid-stream. (As stated in FR-3.2, "If the provider supports structured JSON streaming, the engine SHOULD utilize an incremental JSON parser (e.g., ijson). If a structural key violates the CognitiveFormatContract mid-stream, the engine MAY sever the stream early...")
-2. Modify SSE token tracking fallback on severed streams: "If the TCP socket is actively preempted, the final include_usage chunk will not arrive. The engine MUST fallback to its local LLMAdapterProtocol.count_tokens() method on the partially generated string. To prevent strict tokenizers... engine MUST decode the byte buffer using errors='replace' or errors='ignore' prior to tokenization."
-3. Implement transient network fault backoff and yield (SLA contention): Trap 429/502/503 inside the `InferenceEngine.generate_intent()` function. Calculate exponential backoff and verify against Orchestrator's `global_timeout_seconds`. Yield an InferenceConvergenceError if SLA is exceeded.
+2. Decomposition and Planning:
+   - Atomic Unit 1: **Refactor Request-Scoped Variables**: Remove `self._ttft` from `InferenceEngine.generate_intent` and replace it with a purely local scoped variable (`ttft`) to ensure complete isolation and thread safety.
+   - Atomic Unit 2: **Concurrency Testing for TTFT**: Implement tests specifically checking TTFT tracking within concurrent calls to guarantee accuracy without race conditions.
+
+3. Select ONE Atomic Unit: I will implement **Atomic Unit 1: Refactor Request-Scoped Variables** and adjust tests.
+
+4. Implementation:
+   - Modify `src/coreason_inference_engine/engine.py` to use a local `ttft` variable instead of `self._ttft` inside `generate_intent`.
+
+5. Rigorous Testing:
+   - Add a test that triggers `generate_intent` to ensure `ttft` is properly recorded locally and emitted to the telemetry span trace.
+
+6. Validation and pre-commit checking:
+   - Run `uv run ruff format .`
+   - Run `uv run ruff check . --fix`
+   - Run `uv run mypy src/ tests/`
+   - Run `uv run pre-commit run --all-files`
+   - Ensure `uv run pytest` passes at 100% coverage.
+
+7. Submit.

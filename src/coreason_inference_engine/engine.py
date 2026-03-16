@@ -156,28 +156,25 @@ class InferenceEngine(InferenceEngineProtocol):
         return raw_output, None
 
     def _determine_target_schema(self, node: AgentNodeProfile) -> str:
-        if getattr(node, "interventional_policy", None) is not None:
+        if node.interventional_policy is not None:
             return "state_differential"
 
-        if getattr(node, "symbolic_handoff_policy", None) is not None:
+        if node.symbolic_handoff_policy is not None:
             return "symbolic_handoff"
-
-        if getattr(node, "action_space_id", None) is not None:
-            return str(node.action_space_id)
 
         return "intent"
 
-    def _calculate_cost(self, input_tokens: int, output_tokens: int) -> float:
+    def _calculate_cost(self, input_tokens: int, output_tokens: int) -> int:
         rate_card = getattr(self.adapter, "rate_card", None)
         if not rate_card:
-            return float(input_tokens + output_tokens)
+            return input_tokens + output_tokens
 
         in_cost_standard = (input_tokens * rate_card.cost_per_million_input_tokens) / 1_000_000.0
         out_cost_standard = (output_tokens * rate_card.cost_per_million_output_tokens) / 1_000_000.0
 
         total_cost_standard = in_cost_standard + out_cost_standard
 
-        return float(total_cost_standard)
+        return int(total_cost_standard * 1_000_000)
 
     async def _evaluate_system1_reflex(
         self,
@@ -258,7 +255,7 @@ class InferenceEngine(InferenceEngineProtocol):
                     tool_invocation_id=invocation_cid,
                     input_tokens=total_input_tokens,
                     output_tokens=total_output_tokens,
-                    burn_magnitude=int(self._calculate_cost(total_input_tokens, total_output_tokens) * 1_000_000),
+                    burn_magnitude=self._calculate_cost(total_input_tokens, total_output_tokens),
                 )
                 return (
                     cast("AnyIntent", valid_intent),
@@ -565,7 +562,7 @@ class InferenceEngine(InferenceEngineProtocol):
                         tool_invocation_id=invocation_cid or "",
                         input_tokens=total_input_tokens,
                         output_tokens=total_output_tokens,
-                        burn_magnitude=int(self._calculate_cost(total_input_tokens, total_output_tokens) * 1_000_000),
+                        burn_magnitude=self._calculate_cost(total_input_tokens, total_output_tokens),
                     )
 
                     return cast("AnyIntent", valid_intent), burn_receipt, scratchpad

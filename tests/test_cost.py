@@ -48,7 +48,7 @@ def test_calculate_cost_with_rate_card() -> None:
     engine = InferenceEngine(adapter)
 
     cost = engine._calculate_cost(1000, 2000)
-    assert cost == 50000
+    assert cost == 0.05
 
     # test None
     adapter.rate_card = None

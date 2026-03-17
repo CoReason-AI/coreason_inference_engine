@@ -13,6 +13,7 @@ from coreason_manifest.spec.ontology import (
     ActionSpaceManifest,
     AgentNodeProfile,
     AnyIntent,
+    CognitiveRewardEvaluationReceipt,
     ComputeRateContract,
     EpistemicLedgerState,
     LatentScratchpadReceipt,
@@ -34,7 +35,7 @@ class InferenceEngineProtocol(Protocol):
         ledger: EpistemicLedgerState,
         node_id: str,
         action_space: ActionSpaceManifest,
-    ) -> tuple[AnyIntent, TokenBurnReceipt, LatentScratchpadReceipt | None]:
+    ) -> tuple[AnyIntent, TokenBurnReceipt, LatentScratchpadReceipt | None, CognitiveRewardEvaluationReceipt | None]:
         """
         Translates the passive ledger into active generation.
         Executes Context Hydration, the Forward Pass, and System 2 Remediation.

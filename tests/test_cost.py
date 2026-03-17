@@ -23,6 +23,10 @@ class MockAdapterWithCost(LLMAdapterProtocol):
             },
         )()
 
+    @property
+    def supports_latent_intervention(self) -> bool:
+        return False
+
     def count_tokens(self, text: str) -> int:  # noqa: ARG002
         return 0
 
@@ -39,6 +43,7 @@ class MockAdapterWithCost(LLMAdapterProtocol):
         temperature: float,  # noqa: ARG002
         logit_biases: dict[int, float] | None = None,  # noqa: ARG002
         max_tokens: int | None = None,  # noqa: ARG002
+        decoding_policy: Any | None = None,  # noqa: ARG002
     ) -> AsyncGenerator[tuple[str, dict[str, int]]]:
         yield "", {}
 

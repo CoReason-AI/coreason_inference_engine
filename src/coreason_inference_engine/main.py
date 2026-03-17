@@ -43,7 +43,7 @@ class InferenceRPCServer:
         self._setup_routes()
 
     def _setup_routes(self) -> None:
-        @self.fastapi_app.post("/v1/intent/generate")  # type: ignore[misc]
+        @self.fastapi_app.post("/v1/intent/generate")
         async def generate_intent(request: Request) -> Any:
             try:
                 data = await request.json()
@@ -146,7 +146,7 @@ async def serve() -> None:
         await server.start()
 
 
-@app.command()  # type: ignore[misc]
+@app.command()
 def start_server() -> None:
     """Starts the Cognitive Plane Inference Engine microservice."""
     logger.info("Booting CoReason Inference Engine...")

@@ -120,7 +120,7 @@ async def test_reflex_fast_path_success(
     adapter = DummyReflexAdapter(responses=[fast_path_response])
     engine = InferenceEngine(adapter)
 
-    intent, receipt, _scratch = await engine.generate_intent(
+    intent, receipt, _scratch, _ = await engine.generate_intent(
         node=node, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
     )
 
@@ -159,7 +159,7 @@ async def test_reflex_fast_path_fallback_invalid_intent(
     adapter = DummyReflexAdapter(responses=[fast_path_response, deep_path_response])
     engine = InferenceEngine(adapter)
 
-    intent, _receipt, _scratch = await engine.generate_intent(
+    intent, _receipt, _scratch, _ = await engine.generate_intent(
         node=node, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
     )
 
@@ -208,7 +208,7 @@ async def test_reflex_fast_path_fallback_unallowed_tool(
     adapter = DummyReflexAdapter(responses=[fast_path_response, deep_path_response])
     engine = InferenceEngine(adapter)
 
-    intent, _receipt, _scratch = await engine.generate_intent(
+    intent, _receipt, _scratch, _ = await engine.generate_intent(
         node=node, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
     )
 
@@ -235,7 +235,7 @@ async def test_reflex_fast_path_empty_passive_tools(
     adapter = DummyReflexAdapter(responses=[deep_path_response])
     engine = InferenceEngine(adapter)
 
-    intent, _receipt, _scratch = await engine.generate_intent(
+    intent, _receipt, _scratch, _ = await engine.generate_intent(
         node=node, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
     )
 
@@ -293,7 +293,7 @@ async def test_reflex_fast_path_missing_usage(
     adapter = MissingUsageAdapter(responses=[])
     engine = InferenceEngine(adapter)
 
-    intent, receipt, _scratch = await engine.generate_intent(
+    intent, receipt, _scratch, _ = await engine.generate_intent(
         node=node, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
     )
     assert getattr(intent, "type", None) == "tool_invocation"
@@ -376,7 +376,7 @@ async def test_reflex_fast_path_system_message_exists(
 
     engine.hydrator = NoSystemHydrator()  # type: ignore
 
-    intent, _receipt, _scratch = await engine.generate_intent(
+    intent, _receipt, _scratch, _ = await engine.generate_intent(
         node=node, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
     )
     assert getattr(intent, "type", None) == "tool_invocation"
@@ -402,7 +402,7 @@ async def test_reflex_fast_path_validation_error(
     )
     engine = InferenceEngine(adapter)
 
-    intent, _receipt, _scratch = await engine.generate_intent(
+    intent, _receipt, _scratch, _ = await engine.generate_intent(
         node=node, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
     )
     assert getattr(intent, "type", None) == "informational"

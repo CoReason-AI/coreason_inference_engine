@@ -15,6 +15,7 @@ from coreason_manifest.spec.ontology import (
     ActionSpaceManifest,
     AgentNodeProfile,
     AnyIntent,
+    CognitiveRewardEvaluationReceipt,
     EpistemicLedgerState,
     LatentScratchpadReceipt,
     PeftAdapterContract,
@@ -44,7 +45,7 @@ class DummyInferenceEngine:
         ledger: EpistemicLedgerState,
         node_id: str,
         action_space: ActionSpaceManifest,
-    ) -> tuple[AnyIntent, TokenBurnReceipt, LatentScratchpadReceipt | None]:
+    ) -> tuple[AnyIntent, TokenBurnReceipt, LatentScratchpadReceipt | None, CognitiveRewardEvaluationReceipt | None]:
         # Using typing.cast or similar is difficult because we have AnyIntent. We'll raise to prove invocation.
         raise NotImplementedError("Dummy implementation")
 

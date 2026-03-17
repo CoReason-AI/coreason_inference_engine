@@ -118,7 +118,7 @@ async def test_hallucinated_tool_escalation(
 
     mock_adapter.generate_stream = mock_stream  # type: ignore
 
-    intent, _receipt, _scratchpad = await engine.generate_intent(
+    intent, _receipt, _scratchpad, _ = await engine.generate_intent(
         node=dummy_node, ledger=dummy_ledger, node_id="did:node:123", action_space=dummy_action_space
     )
 

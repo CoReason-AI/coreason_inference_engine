@@ -18,7 +18,6 @@ from coreason_manifest.spec.ontology import (
     CognitiveFormatContract,
     EpistemicLedgerState,
     EpistemicRewardModelPolicy,
-    JSONRPCErrorResponseState,
     PeftAdapterContract,
     SelfCorrectionPolicy,
 )
@@ -574,9 +573,10 @@ async def test_local_backpressure_fail_fast(
             node=mock_node, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
         )
 
-        assert isinstance(intent, JSONRPCErrorResponseState)
-        assert intent.error.code == 429
-        assert "Local backpressure threshold exceeded" in intent.error.message
+        from coreason_manifest.spec.ontology import SystemFaultEvent
+
+        assert isinstance(intent, SystemFaultEvent)
+        assert intent.type == "system_fault"
         assert receipt.input_tokens == 0
         assert receipt.output_tokens == 0
         assert receipt.burn_magnitude == 0

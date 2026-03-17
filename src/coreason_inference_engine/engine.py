@@ -23,8 +23,6 @@ from coreason_manifest.spec.ontology import (
     AnyIntent,
     CognitiveRewardEvaluationReceipt,
     EpistemicLedgerState,
-    JSONRPCErrorResponseState,
-    JSONRPCErrorState,
     LatentScratchpadReceipt,
     LogEvent,
     ObservationEvent,
@@ -350,24 +348,27 @@ class InferenceEngine(InferenceEngineProtocol):
                 LogEvent(
                     timestamp=time.time(),
                     level="WARNING",
-                    message="Semaphore saturated, yielding 429 JSONRPCErrorResponseState",
+                    message="Semaphore saturated, yielding SystemFaultEvent",
                     context_profile={"node_id": node_id},
                 )
             )
+
+            # Import the correct event type
+            from coreason_manifest.spec.ontology import SystemFaultEvent
+
+            # Yield a valid AnyStateEvent to prevent Pydantic validation crashes in the Ledger
             error_intent = cast(
                 "AnyIntent",
-                JSONRPCErrorResponseState(
-                    jsonrpc="2.0",
-                    error=JSONRPCErrorState(
-                        code=429,
-                        message="Too Many Requests: Local backpressure threshold exceeded.",
-                    ),
+                SystemFaultEvent(
+                    event_id=f"fault_{uuid.uuid4().hex[:8]}",
+                    timestamp=time.time(),
+                    type="system_fault",
                 ),
             )
             receipt = TokenBurnReceipt(
                 event_id=f"burn_{uuid.uuid4().hex[:8]}",
                 timestamp=time.time(),
-                tool_invocation_id="",
+                tool_invocation_id="none",
                 input_tokens=0,
                 output_tokens=0,
                 burn_magnitude=0,
@@ -593,7 +594,7 @@ class InferenceEngine(InferenceEngineProtocol):
                     burn_receipt = TokenBurnReceipt(
                         event_id=f"burn_{uuid.uuid4().hex[:8]}",
                         timestamp=time.time(),
-                        tool_invocation_id=invocation_cid or "",
+                        tool_invocation_id=invocation_cid or "none",
                         input_tokens=total_input_tokens,
                         output_tokens=total_output_tokens,
                         burn_magnitude=self._calculate_cost(total_input_tokens, total_output_tokens),

@@ -34,7 +34,7 @@ from coreason_manifest.spec.ontology import (
     TokenBurnReceipt,
     ToolInvocationEvent,
 )
-from coreason_manifest.utils.algebra import SCHEMA_REGISTRY, generate_correction_prompt, validate_payload
+from coreason_manifest.utils.algebra import generate_correction_prompt, validate_payload
 from pydantic import TypeAdapter, ValidationError
 
 from coreason_inference_engine.context import ContextHydrator
@@ -44,21 +44,6 @@ from coreason_inference_engine.interfaces import (
     LLMAdapterProtocol,
 )
 from coreason_inference_engine.utils.telemetry import TelemetryEmitter
-
-
-class _AnyIntentAdapter:
-    def model_validate_json(self, b: bytes) -> Any:
-        # StateMutationIntent does not have a "type" field natively, so we cannot use a simple string discriminator.
-        # We'll just rely on a non-discriminated Union for the patched types.
-        patched_intent = AnyIntent | ToolInvocationEvent | StateMutationIntent | System2RemediationIntent
-        return TypeAdapter(patched_intent).validate_json(b)
-
-
-if "AnyIntent" not in SCHEMA_REGISTRY:
-    SCHEMA_REGISTRY["AnyIntent"] = cast("Any", _AnyIntentAdapter())
-    SCHEMA_REGISTRY["intent"] = cast("Any", _AnyIntentAdapter())
-    SCHEMA_REGISTRY["state_differential"] = cast("Any", _AnyIntentAdapter())
-    SCHEMA_REGISTRY["symbolic_handoff"] = cast("Any", _AnyIntentAdapter())
 
 
 class InferenceEngine(InferenceEngineProtocol):
@@ -164,6 +149,13 @@ class InferenceEngine(InferenceEngineProtocol):
 
         return "intent"
 
+    def _validate_intent(self, schema_key: str, payload: bytes) -> Any:
+        # StateMutationIntent does not have a "type" field natively, so we rely on a non-discriminated Union.
+        if schema_key in ("intent", "state_differential", "symbolic_handoff", "AnyIntent"):
+            patched_intent = AnyIntent | ToolInvocationEvent | StateMutationIntent | System2RemediationIntent
+            return TypeAdapter(patched_intent).validate_json(payload)
+        return validate_payload(schema_key, payload)
+
     def _calculate_cost(self, input_tokens: int, output_tokens: int) -> int:
         rate_card = getattr(self.adapter, "rate_card", None)
         if not rate_card:
@@ -244,7 +236,7 @@ class InferenceEngine(InferenceEngineProtocol):
             target_schema_key = self._determine_target_schema(node)
 
             # Validate payload
-            valid_intent = validate_payload(target_schema_key, clean_json_str.encode("utf-8", errors="replace"))
+            valid_intent = self._validate_intent(target_schema_key, clean_json_str.encode("utf-8", errors="replace"))
 
             # Fast-path only succeeds if it invokes an allowed passive tool
             if isinstance(valid_intent, ToolInvocationEvent) and valid_intent.tool_name in allowed_tools:
@@ -265,11 +257,25 @@ class InferenceEngine(InferenceEngineProtocol):
                     total_output_tokens,
                 )
 
-        except ValidationError:
-            # If the fast path fails (e.g. invalid JSON or structural error), we silently fallback
-            pass
-        except Exception:  # noqa: S110
-            pass
+        except ValidationError as e:
+            # If the fast path fails (e.g. invalid JSON or structural error), we fallback and log
+            await self.telemetry.emit(
+                LogEvent(
+                    timestamp=time.time(),
+                    level="DEBUG",
+                    message="System 1 Fast-Path validation failed.",
+                    context_profile={"error": str(e)},
+                )
+            )
+        except Exception as e:
+            await self.telemetry.emit(
+                LogEvent(
+                    timestamp=time.time(),
+                    level="DEBUG",
+                    message="System 1 Fast-Path execution failed.",
+                    context_profile={"error": str(e)},
+                )
+            )
 
         return None, None, None, total_input_tokens, total_output_tokens
 
@@ -515,8 +521,10 @@ class InferenceEngine(InferenceEngineProtocol):
                     target_schema_key = self._determine_target_schema(node)
 
                     # Zero-Trust Egress: Pass byte string to validation functor
-                    # validate_payload raises ValidationError on failure
-                    valid_intent = validate_payload(target_schema_key, clean_json_str.encode("utf-8", errors="replace"))
+                    # _validate_intent raises ValidationError on failure
+                    valid_intent = self._validate_intent(
+                        target_schema_key, clean_json_str.encode("utf-8", errors="replace")
+                    )
 
                     # FR-4.5: Hallucinated Tool Escalation
                     if isinstance(valid_intent, ToolInvocationEvent):

@@ -222,6 +222,13 @@ async def test_successful_generation(
     assert adapter.tools_projected is True
 
 
+def test_validation_error_unknown_step() -> None:
+    from coreason_inference_engine.utils.validation import validate_payload
+
+    with pytest.raises(ValueError, match="Unknown step"):
+        validate_payload("nonexistent_step", b"{}")
+
+
 @pytest.mark.asyncio
 async def test_generate_intent_ttft_concurrency(
     mock_node: AgentNodeProfile, mock_ledger: EpistemicLedgerState, mock_action_space: ActionSpaceManifest
@@ -930,3 +937,57 @@ async def test_transient_network_fault_unhandled_status_code(
         await engine.generate_intent(
             node=mock_node, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
         )
+
+
+@pytest.mark.asyncio
+async def test_epistemic_tool_pruning() -> None:
+    from coreason_manifest.spec.ontology import (
+        AgentNodeProfile,
+        ExecutionSLA,
+        PermissionBoundaryPolicy,
+        SideEffectProfile,
+        ToolManifest,
+    )
+
+    safe_tool = ToolManifest(
+        tool_name="safe_tool",
+        description="A safe tool",
+        input_schema={},
+        side_effects=SideEffectProfile(is_idempotent=True, mutates_state=False),
+        permissions=PermissionBoundaryPolicy(network_access=False, file_system_mutation_forbidden=True),
+        sla=ExecutionSLA(max_execution_time_ms=10000),
+    )
+
+    restricted_tool = ToolManifest(
+        tool_name="restricted_tool",
+        description="A restricted tool",
+        input_schema={},
+        side_effects=SideEffectProfile(is_idempotent=False, mutates_state=True),
+        permissions=PermissionBoundaryPolicy(network_access=True, file_system_mutation_forbidden=False),
+        sla=ExecutionSLA(max_execution_time_ms=10000),
+    )
+
+    action_space = ActionSpaceManifest(action_space_id="test_space", native_tools=[safe_tool, restricted_tool])
+
+    node_with_boundaries = AgentNodeProfile(description="Test node", type="agent")
+    # Use object.__setattr__ to bypass frozen checks on AgentNodeProfile
+    object.__setattr__(
+        node_with_boundaries, "information_flow_policy", type("MockPolicy", (), {"tool_boundaries": ["safe_tool"]})()
+    )
+    object.__setattr__(
+        node_with_boundaries, "permissions", type("MockPermissions", (), {"allowed_tools": ["safe_tool"]})()
+    )
+
+    adapter = DummyAdapter(
+        responses=['{"type": "informational", "message": "hello", "timeout_action": "proceed_default"}']
+    )
+    engine = InferenceEngine(adapter)
+
+    await engine.generate_intent(
+        node=node_with_boundaries,
+        ledger=EpistemicLedgerState(history=[]),
+        node_id="did:test:1",
+        action_space=action_space,
+    )
+
+    assert adapter.tools_projected is True

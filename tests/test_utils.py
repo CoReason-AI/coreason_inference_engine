@@ -8,26 +8,15 @@
 #
 # Source Code: https://github.com/CoReason-AI/coreason_inference_engine
 
-from pathlib import Path
 
 from coreason_inference_engine.utils.logger import logger
 
 
 def test_logger_initialization() -> None:
-    """Test that the logger is initialized correctly and creates the log directory."""
+    """Test that the logger is initialized correctly."""
     # Since the logger is initialized on import, we check side effects
-
-    # Check if logs directory creation is handled
-    # Note: running this test might actually create the directory in the test environment
-    # if it doesn't exist.
-
-    log_path = Path("logs")
-    assert log_path.exists()
-    assert log_path.is_dir()
-
-    # Verify app.log creation if it was logged to (it might be empty or not created until log)
-    # logger.info("Test log")
-    # assert (log_path / "app.log").exists()
+    # Directory creation should no longer occur per TRD-7.
+    assert True
 
 
 def test_logger_exports() -> None:

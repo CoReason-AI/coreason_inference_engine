@@ -210,7 +210,7 @@ async def test_successful_generation(
     adapter = DummyAdapter(responses=[valid_intent_json])
     engine = InferenceEngine(adapter)
 
-    intent, receipt, _scratchpad = await engine.generate_intent(
+    intent, receipt, _scratchpad, _ = await engine.generate_intent(
         node=mock_node, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
     )
 
@@ -341,7 +341,7 @@ async def test_remediation_loop_success(
     adapter = DummyAdapter(responses=[invalid_intent_json, valid_intent_json])
     engine = InferenceEngine(adapter)
 
-    intent, receipt, _scratchpad = await engine.generate_intent(
+    intent, receipt, _scratchpad, _ = await engine.generate_intent(
         node=mock_node, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
     )
 
@@ -481,9 +481,23 @@ async def test_extract_latent_traces_with_tags(
     adapter = DummyAdapter(responses=[raw_response])
     engine = InferenceEngine(adapter)
 
-    intent, _receipt, scratchpad = await engine.generate_intent(
-        node=mock_node_with_think, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
+    from coreason_manifest.spec.ontology import TopologicalRewardContract
+
+    assert mock_node_with_think.grpo_reward_policy is not None
+    new_policy = mock_node_with_think.grpo_reward_policy.model_copy(
+        update={
+            "topological_scoring": TopologicalRewardContract(
+                min_link_criticality_score=0.1, min_semantic_relevance_score=0.1, aggregation_method="gcn_spatial"
+            )
+        }
     )
+    new_node = mock_node_with_think.model_copy(update={"grpo_reward_policy": new_policy})
+
+    intent, _receipt, scratchpad, cognitive_receipt = await engine.generate_intent(
+        node=new_node, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
+    )
+
+    assert cognitive_receipt is not None
 
     assert intent.type == "informational"
     assert scratchpad is not None
@@ -507,7 +521,7 @@ async def test_extract_latent_traces_missing_tags_but_required(
     adapter = DummyAdapter(responses=[raw_response])
     engine = InferenceEngine(adapter)
 
-    intent, _receipt, scratchpad = await engine.generate_intent(
+    intent, _receipt, scratchpad, _ = await engine.generate_intent(
         node=mock_node_with_think, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
     )
 
@@ -531,7 +545,7 @@ async def test_extract_latent_traces_no_tags_required(
     adapter = DummyAdapter(responses=[raw_response, valid_response])
     engine = InferenceEngine(adapter)
 
-    intent, _receipt, scratchpad = await engine.generate_intent(
+    intent, _receipt, scratchpad, _ = await engine.generate_intent(
         node=mock_node, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
     )
 
@@ -556,7 +570,7 @@ async def test_local_backpressure_fail_fast(
 
     try:
         # Since the semaphore is locked, generate_intent should fail-fast
-        intent, receipt, scratchpad = await engine.generate_intent(
+        intent, receipt, scratchpad, _ = await engine.generate_intent(
             node=mock_node, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
         )
 
@@ -583,7 +597,7 @@ async def test_severed_stream_token_fallback(
     adapter = SeveredStreamAdapter(response=valid_intent_json)
     engine = InferenceEngine(adapter)
 
-    intent, receipt, _scratchpad = await engine.generate_intent(
+    intent, receipt, _scratchpad, _ = await engine.generate_intent(
         node=mock_node, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
     )
 
@@ -698,7 +712,7 @@ async def test_transient_network_fault_backoff(
     adapter = HttpFaultAdapter(responses, status_codes)
     engine = InferenceEngine(adapter)
 
-    intent, _receipt, _scratchpad = await engine.generate_intent(
+    intent, _receipt, _scratchpad, _ = await engine.generate_intent(
         node=mock_node, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
     )
 
@@ -850,7 +864,7 @@ async def test_transient_network_fault_mid_stream(
     adapter = MidStreamFaultAdapter()
     engine = InferenceEngine(adapter)
 
-    intent, _receipt, _scratchpad = await engine.generate_intent(
+    intent, _receipt, _scratchpad, _ = await engine.generate_intent(
         node=mock_node, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
     )
 

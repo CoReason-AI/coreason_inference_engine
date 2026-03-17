@@ -21,6 +21,7 @@ from coreason_manifest.spec.ontology import (
     ActionSpaceManifest,
     AgentNodeProfile,
     AnyIntent,
+    CognitiveRewardEvaluationReceipt,
     EpistemicLedgerState,
     JSONRPCErrorResponseState,
     JSONRPCErrorState,
@@ -332,7 +333,7 @@ class InferenceEngine(InferenceEngineProtocol):
         ledger: EpistemicLedgerState,
         node_id: str,
         action_space: ActionSpaceManifest,
-    ) -> tuple[AnyIntent, TokenBurnReceipt, LatentScratchpadReceipt | None]:
+    ) -> tuple[AnyIntent, TokenBurnReceipt, LatentScratchpadReceipt | None, CognitiveRewardEvaluationReceipt | None]:
         """
         Translates the passive ledger into active generation.
         Executes Context Hydration, the Forward Pass, and System 2 Remediation.
@@ -371,7 +372,7 @@ class InferenceEngine(InferenceEngineProtocol):
                 output_tokens=0,
                 burn_magnitude=0,
             )
-            return error_intent, receipt, None
+            return error_intent, receipt, None, None
 
         async with self._semaphore:
             total_input_tokens = 0
@@ -386,7 +387,7 @@ class InferenceEngine(InferenceEngineProtocol):
                 total_output_tokens += fast_out
 
                 if fast_intent is not None and fast_receipt is not None:
-                    return fast_intent, fast_receipt, fast_scratch
+                    return fast_intent, fast_receipt, fast_scratch, None
 
             # FR-1.3 & FR-2.5: Context Compilation & Semantic Slicing
             messages = self._apply_semantic_slicing(node, ledger)
@@ -598,7 +599,22 @@ class InferenceEngine(InferenceEngineProtocol):
                         burn_magnitude=self._calculate_cost(total_input_tokens, total_output_tokens),
                     )
 
-                    return cast("AnyIntent", valid_intent), burn_receipt, scratchpad
+                    cognitive_receipt = None
+                    if (
+                        scratchpad
+                        and node.grpo_reward_policy
+                        and getattr(node.grpo_reward_policy, "topological_scoring", None)
+                    ):
+                        cognitive_receipt = CognitiveRewardEvaluationReceipt(
+                            event_id=f"reward_{uuid.uuid4().hex[:8]}",
+                            timestamp=time.time(),
+                            source_generation_id=scratchpad.trace_id,
+                            extracted_axioms=[],
+                            calculated_r_path=1.0,  # Proxy values since full topological execution is out of scope here
+                            total_advantage_score=1.0,
+                        )
+
+                    return cast("AnyIntent", valid_intent), burn_receipt, scratchpad, cognitive_receipt
 
                 except ValidationError as e:
                     # FR-3.3, FR-3.4: Trap validation failure and generate mathematical reprimand

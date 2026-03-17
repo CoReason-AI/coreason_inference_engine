@@ -112,7 +112,7 @@ async def test_rpc_server_generate_intent_success(mock_payload: dict[str, Any]) 
     )
 
     async def mock_generate(*_args: Any, **_kwargs: Any) -> Any:
-        return (intent, receipt, scratchpad)
+        return (intent, receipt, scratchpad, None)
 
     engine_mock.generate_intent.side_effect = mock_generate
 

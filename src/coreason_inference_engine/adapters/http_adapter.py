@@ -11,7 +11,7 @@ from collections.abc import AsyncGenerator
 from typing import Any
 
 import httpx
-from coreason_manifest.spec.ontology import PeftAdapterContract
+from coreason_manifest.spec.ontology import ComputeRateContract, PeftAdapterContract
 
 from coreason_inference_engine.interfaces import LLMAdapterProtocol
 from coreason_inference_engine.utils.network import validate_url_for_ssrf
@@ -26,7 +26,7 @@ class BaseHttpAdapter(LLMAdapterProtocol):
     def __init__(self, api_url: str, api_key: str, max_connections: int = 1000) -> None:
         self.api_url = api_url
         self.api_key = api_key
-        self.rate_card: Any = None
+        self.rate_card: ComputeRateContract | None = None
         # Singleton Transport & SSRF Firewall: explicitly bounded limits
         limits = httpx.Limits(max_connections=max_connections, max_keepalive_connections=max_connections)
         self.client = httpx.AsyncClient(limits=limits, timeout=httpx.Timeout(60.0))

@@ -10,16 +10,48 @@
 
 import asyncio
 import signal
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
+from coreason_manifest.spec.ontology import (
+    ActionSpaceManifest,
+    AgentNodeProfile,
+    EpistemicLedgerState,
+    InformationalIntent,
+    LatentScratchpadReceipt,
+    SelfCorrectionPolicy,
+    TokenBurnReceipt,
+)
+from httpx import AsyncClient
 from typer.testing import CliRunner
 
 from coreason_inference_engine.adapters.openai_adapter import OpenAIAdapter
 from coreason_inference_engine.engine import InferenceEngine
+from coreason_inference_engine.interfaces import InferenceConvergenceError
 from coreason_inference_engine.main import InferenceRPCServer, app, serve, setup_engine, start_server
 
 runner = CliRunner()
+
+
+@pytest.fixture
+def mock_payload() -> dict[str, Any]:
+    node = AgentNodeProfile(
+        description="Test node",
+        type="agent",
+        correction_policy=SelfCorrectionPolicy(max_loops=2, rollback_on_failure=True),
+    )
+    ledger = EpistemicLedgerState(history=[])
+    action_space = ActionSpaceManifest(
+        action_space_id="test_space",
+        native_tools=[],
+    )
+    return {
+        "node": node.model_dump(),
+        "ledger": ledger.model_dump(),
+        "action_space": action_space.model_dump(),
+        "node_id": "did:test:1",
+    }
 
 
 def test_cli_startup() -> None:
@@ -51,39 +83,125 @@ def test_setup_engine() -> None:
         assert isinstance(engine_env.adapter, OpenAIAdapter)
         assert engine_env.adapter.api_key == "env-api-key"
 
+    with patch.dict("os.environ", {"COREASON_LLM_PROVIDER": "anthropic", "ANTHROPIC_API_KEY": "env-anthropic"}):
+        engine_anthropic = setup_engine()
+        from coreason_inference_engine.adapters.anthropic_adapter import AnthropicAdapter
+
+        assert isinstance(engine_anthropic.adapter, AnthropicAdapter)
+        assert engine_anthropic.adapter.api_key == "env-anthropic"
+
+
+@pytest.mark.asyncio
+async def test_rpc_server_generate_intent_success(mock_payload: dict[str, Any]) -> None:
+    engine_mock = MagicMock(spec=InferenceEngine)
+
+    intent = InformationalIntent(type="informational", message="success", timeout_action="proceed_default")
+    receipt = TokenBurnReceipt(
+        event_id="1",
+        timestamp=123.0,
+        input_tokens=10,
+        output_tokens=10,
+        burn_magnitude=1,
+        tool_invocation_id="",
+    )
+    scratchpad = LatentScratchpadReceipt(
+        trace_id="1",
+        explored_branches=[],
+        discarded_branches=[],
+        total_latent_tokens=0,
+    )
+
+    async def mock_generate(*_args: Any, **_kwargs: Any) -> Any:
+        return (intent, receipt, scratchpad)
+
+    engine_mock.generate_intent.side_effect = mock_generate
+
+    server = InferenceRPCServer(engine_mock, port=8001)
+    import httpx
+
+    async with AsyncClient(transport=httpx.ASGITransport(app=server.fastapi_app), base_url="http://test") as client:
+        response = await client.post("/v1/intent/generate", json=mock_payload)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["intent"]["message"] == "success"
+
+
+@pytest.mark.asyncio
+async def test_rpc_server_generate_intent_no_node_id(mock_payload: dict[str, Any]) -> None:
+    engine_mock = MagicMock(spec=InferenceEngine)
+    server = InferenceRPCServer(engine_mock, port=8001)
+
+    mock_payload.pop("node_id")
+    import httpx
+
+    async with AsyncClient(transport=httpx.ASGITransport(app=server.fastapi_app), base_url="http://test") as client:
+        response = await client.post("/v1/intent/generate", json=mock_payload)
+
+    assert response.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_rpc_server_generate_intent_convergence_error(mock_payload: dict[str, Any]) -> None:
+    engine_mock = MagicMock(spec=InferenceEngine)
+    engine_mock.generate_intent.side_effect = InferenceConvergenceError("Test Error")
+
+    server = InferenceRPCServer(engine_mock, port=8001)
+    import httpx
+
+    async with AsyncClient(transport=httpx.ASGITransport(app=server.fastapi_app), base_url="http://test") as client:
+        response = await client.post("/v1/intent/generate", json=mock_payload)
+
+    assert response.status_code == 422
+    assert "Test Error" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_rpc_server_generate_intent_internal_error(mock_payload: dict[str, Any]) -> None:
+    engine_mock = MagicMock(spec=InferenceEngine)
+    engine_mock.generate_intent.side_effect = RuntimeError("Unknown Server Error")
+
+    server = InferenceRPCServer(engine_mock, port=8001)
+    import httpx
+
+    async with AsyncClient(transport=httpx.ASGITransport(app=server.fastapi_app), base_url="http://test") as client:
+        response = await client.post("/v1/intent/generate", json=mock_payload)
+
+    assert response.status_code == 500
+
 
 @pytest.mark.asyncio
 async def test_rpc_server_start_stop() -> None:
     """Test InferenceRPCServer start and stop logic."""
     engine_mock = MagicMock(spec=InferenceEngine)
-    server = InferenceRPCServer(engine_mock)
+    server = InferenceRPCServer(engine_mock, port=8001)
 
     # Start the server as a background task
     task = asyncio.create_task(server.start())
 
     # Ensure it's running
-    await asyncio.sleep(0.1)
-    assert not server._shutdown_event.is_set()
+    await asyncio.sleep(0.2)
+    assert hasattr(server, "server")
 
     # Stop the server
     server.stop()
-    assert server._shutdown_event.is_set()
+    assert server.server.should_exit is True
 
     # Wait for the task to complete
-    await asyncio.wait_for(task, timeout=1.0)
+    await task
 
 
 @pytest.mark.asyncio
 async def test_rpc_server_cancellation() -> None:
     """Test InferenceRPCServer handling of asyncio cancellation."""
     engine_mock = MagicMock(spec=InferenceEngine)
-    server = InferenceRPCServer(engine_mock)
+    server = InferenceRPCServer(engine_mock, port=8002)
 
     # Start the server as a background task
     task = asyncio.create_task(server.start())
 
     # Ensure it's running
-    await asyncio.sleep(0.1)
+    await asyncio.sleep(0.2)
 
     # Cancel the task
     task.cancel()

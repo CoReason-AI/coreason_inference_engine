@@ -23,7 +23,7 @@ from coreason_manifest.spec.ontology import (
     SelfCorrectionPolicy,
 )
 
-from coreason_inference_engine.engine import InferenceEngine, _AnyIntentAdapter
+from coreason_inference_engine.engine import InferenceEngine
 from coreason_inference_engine.interfaces import InferenceConvergenceError, LLMAdapterProtocol
 
 
@@ -588,8 +588,8 @@ async def test_severed_stream_token_fallback(
 
 
 def test_anyintent_adapter_includes_missing_intents() -> None:
-    """Verifies that missing intent types can be successfully validated by _AnyIntentAdapter."""
-    adapter = _AnyIntentAdapter()
+    """Verifies that missing intent types can be successfully validated by _validate_intent."""
+    engine = InferenceEngine(DummyAdapter([]))
 
     # ToolInvocationEvent
     tool_invocation_json = b"""{
@@ -611,13 +611,13 @@ def test_anyintent_adapter_includes_missing_intents() -> None:
             "cryptographic_blob": "blob"
         }
     }"""
-    tool_intent = adapter.model_validate_json(tool_invocation_json)
+    tool_intent = engine._validate_intent("intent", tool_invocation_json)
     assert tool_intent.type == "tool_invocation"
     assert tool_intent.tool_name == "test_tool"
 
     # StateMutationIntent
     state_mutation_json = b'{"op": "replace", "path": "/some/path", "value": "new_value"}'
-    mutation_intent = adapter.model_validate_json(state_mutation_json)
+    mutation_intent = engine._validate_intent("state_differential", state_mutation_json)
     assert mutation_intent.op == "replace"
     assert mutation_intent.path == "/some/path"
     assert mutation_intent.value == "new_value"
@@ -627,9 +627,15 @@ def test_anyintent_adapter_includes_missing_intents() -> None:
         b'{"fault_id": "fault_1", "target_node_id": "did:test:1", '
         b'"failing_pointers": ["/a"], "remediation_prompt": "fix it"}'
     )
-    remed_intent = adapter.model_validate_json(remediation_json)
+    remed_intent = engine._validate_intent("intent", remediation_json)
     assert remed_intent.fault_id == "fault_1"
     assert remed_intent.remediation_prompt == "fix it"
+
+    # Other schema key defaults to validate_payload
+    # Try cognitive_sync, which expects CognitiveStateProfile
+    cognitive_sync_json = b'{"urgency_index": 0.5, "caution_index": 0.5, "divergence_tolerance": 0.1}'
+    cog_intent = engine._validate_intent("cognitive_sync", cognitive_sync_json)
+    assert cog_intent.urgency_index == 0.5
 
 
 class HttpFaultAdapter(LLMAdapterProtocol):

@@ -13,6 +13,7 @@ from coreason_manifest.spec.ontology import (
     ActionSpaceManifest,
     AgentNodeProfile,
     AnyIntent,
+    ComputeRateContract,
     EpistemicLedgerState,
     LatentScratchpadReceipt,
     PeftAdapterContract,
@@ -46,7 +47,7 @@ class InferenceEngineProtocol(Protocol):
 
 
 class LLMAdapterProtocol(Protocol):
-    rate_card: Any
+    rate_card: ComputeRateContract | None
     """Protocol for LLM provider adapters."""
 
     def count_tokens(self, text: str) -> int:

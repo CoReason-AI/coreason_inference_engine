@@ -11,6 +11,7 @@ from collections.abc import AsyncGenerator
 from typing import Any
 
 import tiktoken
+from coreason_manifest.spec.ontology import ComputeRateContract
 
 from coreason_inference_engine.adapters.http_adapter import BaseHttpAdapter
 
@@ -26,6 +27,11 @@ class AnthropicAdapter(BaseHttpAdapter):
     ) -> None:
         super().__init__(api_url, api_key, max_connections)
         self.model_name = model_name
+        self.rate_card = ComputeRateContract(
+            cost_per_million_input_tokens=3.0,
+            cost_per_million_output_tokens=15.0,
+            magnitude_unit="USD",
+        )
         self._encoding = tiktoken.get_encoding("cl100k_base")
 
     def count_tokens(self, text: str | bytes) -> int:

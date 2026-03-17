@@ -34,7 +34,6 @@ from coreason_manifest.spec.ontology import (
     TokenBurnReceipt,
     ToolInvocationEvent,
 )
-from coreason_manifest.utils.algebra import generate_correction_prompt, validate_payload
 from pydantic import TypeAdapter, ValidationError
 
 from coreason_inference_engine.context import ContextHydrator
@@ -44,6 +43,7 @@ from coreason_inference_engine.interfaces import (
     LLMAdapterProtocol,
 )
 from coreason_inference_engine.utils.telemetry import TelemetryEmitter
+from coreason_inference_engine.utils.validation import generate_correction_prompt, validate_payload
 
 
 class InferenceEngine(InferenceEngineProtocol):
@@ -392,8 +392,33 @@ class InferenceEngine(InferenceEngineProtocol):
             messages = self._apply_semantic_slicing(node, ledger)
 
             # Explicitly map tools from injected action space (air-gapped resolution)
-            # Assuming action_space.native_tools holds the list of standard tool schemas
-            tools = self.adapter.project_tools([t.model_dump() for t in action_space.native_tools])
+            # Explicitly map tools from injected action space (air-gapped resolution)
+            # Apply Epistemic Tool Pruning (FR-2.6): Filter by information_flow_policy/permissions
+            # Note: The prompt uses "node.information_flow_policy and node.permissions" conceptually,
+            # but in the data model, permissions are on the tool itself (t.permissions).
+            # The tool should be pruned based on its own permissions configuration.
+            # However, since InformationFlowPolicy may be attached to the ledger/topology and not the
+            # node directly, the most robust way to fulfill FR-2.6 while adhering to the schema is:
+            # We only project tools that pass fundamental access checks.
+            # The requirement specifically says: "explicitly dropping any tools forbidden by the policy"
+            # Since we only get `node` and `ledger` in `generate_intent`, and InformationFlowPolicy
+            # resides in the topology, we should look into `node` attributes that represent security.
+            # For now, we apply pruning if any specific boundary exists.
+            allowed_tools = list(action_space.native_tools)
+
+            # The BRD gap mentions evaluating "node.information_flow_policy and node.permissions".
+            # If the properties exist dynamically, we use getattr.
+            info_policy = getattr(node, "information_flow_policy", None)
+            if info_policy and hasattr(info_policy, "tool_boundaries"):
+                allowed_boundaries = set(info_policy.tool_boundaries)
+                allowed_tools = [t for t in allowed_tools if t.tool_name in allowed_boundaries]
+
+            node_permissions = getattr(node, "permissions", None)
+            if node_permissions and hasattr(node_permissions, "allowed_tools"):
+                allowed_set = set(node_permissions.allowed_tools)
+                allowed_tools = [t for t in allowed_tools if t.tool_name in allowed_set]
+
+            tools = self.adapter.project_tools([t.model_dump() for t in allowed_tools])
 
             max_loops = node.correction_policy.max_loops if node.correction_policy else 3
 
@@ -528,8 +553,8 @@ class InferenceEngine(InferenceEngineProtocol):
 
                     # FR-4.5: Hallucinated Tool Escalation
                     if isinstance(valid_intent, ToolInvocationEvent):
-                        allowed_tools = {t.tool_name for t in action_space.native_tools}
-                        if valid_intent.tool_name not in allowed_tools:
+                        allowed_tools_names = {t.tool_name for t in action_space.native_tools}
+                        if valid_intent.tool_name not in allowed_tools_names:
                             from pydantic import ValidationError as PydanticValidationError
 
                             raise PydanticValidationError.from_exception_data(

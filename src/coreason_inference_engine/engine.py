@@ -23,10 +23,11 @@ from coreason_manifest.spec.ontology import (
     AnyIntent,
     CognitiveRewardEvaluationReceipt,
     EpistemicLedgerState,
+    ExecutionSpanReceipt,
     LatentScratchpadReceipt,
     LogEvent,
     ObservationEvent,
-    SpanTraceReceipt,
+    SpanEvent,
     StateMutationIntent,
     System2RemediationIntent,
     ThoughtBranchState,
@@ -581,13 +582,21 @@ class InferenceEngine(InferenceEngineProtocol):
                     # Build tracking receipt
                     end_time_unix_nano = time.time_ns()
 
-                    span = SpanTraceReceipt(
+                    span = ExecutionSpanReceipt(
+                        trace_id=f"trace_{uuid.uuid4().hex[:8]}",
                         span_id=f"span_{uuid.uuid4().hex[:8]}",
                         parent_span_id=None,
-                        start_time=start_time_unix_nano,
-                        end_time=end_time_unix_nano,
-                        status="OK",
-                        context_profile={"node_id": node_id, "ttft_nano": ttft},
+                        name="inference_engine_turn",
+                        start_time_unix_nano=start_time_unix_nano,
+                        end_time_unix_nano=end_time_unix_nano,
+                        status="ok",
+                        events=[
+                            SpanEvent(
+                                name="first_token",
+                                timestamp_unix_nano=start_time_unix_nano + ttft,
+                                attributes={"node_id": node_id, "ttft_nano": ttft},
+                            )
+                        ],
                     )
                     await self.telemetry.emit(span)
 

@@ -10,9 +10,9 @@ import asyncio
 import contextlib
 import re
 
-from coreason_manifest.spec.ontology import InformationFlowPolicy, LogEvent, SpanTraceReceipt
+from coreason_manifest.spec.ontology import ExecutionSpanReceipt, InformationFlowPolicy, LogEvent
 
-type TelemetryEvent = SpanTraceReceipt | LogEvent
+type TelemetryEvent = ExecutionSpanReceipt | LogEvent
 
 
 class TelemetryEmitter:

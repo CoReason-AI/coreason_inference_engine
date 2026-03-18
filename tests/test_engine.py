@@ -272,9 +272,9 @@ async def test_generate_intent_ttft_concurrency(
             self.spans: list[Any] = []
 
         async def emit(self, event: Any) -> None:
-            from coreason_manifest.spec.ontology import SpanTraceReceipt
+            from coreason_manifest.spec.ontology import ExecutionSpanReceipt
 
-            if isinstance(event, SpanTraceReceipt):
+            if isinstance(event, ExecutionSpanReceipt):
                 self.spans.append(event)
 
         def redact_pii(self, payload: str, _policy: Any) -> str:
@@ -298,8 +298,10 @@ async def test_generate_intent_ttft_concurrency(
 
     # Ensure all span traces have valid ttft
     for span in emitter.spans:
-        assert "ttft_nano" in span.context_profile
-        ttft = span.context_profile["ttft_nano"]
+        assert len(span.events) > 0
+        first_token_event = next(e for e in span.events if e.name == "first_token")
+        assert "ttft_nano" in first_token_event.attributes
+        ttft = first_token_event.attributes["ttft_nano"]
         assert isinstance(ttft, int)
         assert ttft > 0  # Must have elapsed some time
 

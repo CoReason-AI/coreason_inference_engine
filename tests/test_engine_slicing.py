@@ -44,6 +44,7 @@ class TokenCountingAdapter(LLMAdapterProtocol):
         _temperature: float,
         _logit_biases: dict[int, float] | None = None,
         _max_tokens: int | None = None,
+        response_schema: dict[str, Any] | None = None,  # noqa: ARG002
     ) -> AsyncGenerator[tuple[str, dict[str, int]]]:
         yield "response", {"input_tokens": 0, "output_tokens": 0}
 

@@ -77,6 +77,7 @@ class BaseHttpAdapter(LLMAdapterProtocol):
         temperature: float,
         logit_biases: dict[int, float] | None = None,
         max_tokens: int | None = None,
+        response_schema: dict[str, Any] | None = None,  # noqa: ARG002
     ) -> dict[str, Any]:
         """Prepares the JSON payload for the provider. To be overridden by subclasses if needed."""
         payload: dict[str, Any] = {
@@ -99,6 +100,7 @@ class BaseHttpAdapter(LLMAdapterProtocol):
         temperature: float,
         logit_biases: dict[int, float] | None = None,
         max_tokens: int | None = None,
+        response_schema: dict[str, Any] | None = None,
     ) -> AsyncGenerator[tuple[str, dict[str, int]]]:
         """
         Yields chunked string deltas and an optional usage dictionary.
@@ -107,7 +109,7 @@ class BaseHttpAdapter(LLMAdapterProtocol):
         # SSRF Firewall: run target URI through ipaddress bogon filter
         await validate_url_for_ssrf(self.api_url)
 
-        payload = self._prepare_request_payload(messages, tools, temperature, logit_biases, max_tokens)
+        payload = self._prepare_request_payload(messages, tools, temperature, logit_biases, max_tokens, response_schema)
 
         headers = {
             "Authorization": f"Bearer {self.api_key}",

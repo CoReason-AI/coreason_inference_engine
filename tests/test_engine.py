@@ -20,6 +20,7 @@ from coreason_manifest.spec.ontology import (
     EpistemicRewardModelPolicy,
     PeftAdapterContract,
     SelfCorrectionPolicy,
+    System2RemediationIntent,
 )
 
 from coreason_inference_engine.engine import InferenceEngine
@@ -53,6 +54,7 @@ class DummyAdapter(LLMAdapterProtocol):
         temperature: float,
         logit_biases: dict[int, float] | None = None,
         max_tokens: int | None = None,
+        response_schema: dict[str, Any] | None = None,  # noqa: ARG002
     ) -> AsyncGenerator[tuple[str, dict[str, int]]]:
         _ = temperature
         _ = logit_biases
@@ -91,6 +93,7 @@ class SeveredStreamAdapter(LLMAdapterProtocol):
         temperature: float,
         logit_biases: dict[int, float] | None = None,
         max_tokens: int | None = None,
+        response_schema: dict[str, Any] | None = None,  # noqa: ARG002
     ) -> AsyncGenerator[tuple[str, dict[str, int]]]:
         _ = temperature
         _ = logit_biases
@@ -150,6 +153,7 @@ async def test_ijson_early_termination(
             temperature: float,
             logit_biases: dict[int, float] | None = None,
             max_tokens: int | None = None,
+            response_schema: dict[str, Any] | None = None,  # noqa: ARG002
         ) -> AsyncGenerator[tuple[str, dict[str, int]]]:
             _ = messages
             _ = tools
@@ -185,14 +189,13 @@ async def test_ijson_early_termination(
     adapter = StreamingAdapter()
     engine = InferenceEngine(adapter)
 
-    # We need to monkey-patch or just test that it throws InferenceConvergenceError after max loops,
-    # or give it a valid response on retry. Since StreamingAdapter always yields the invalid stream,
-    # it will fail 2 times and raise InferenceConvergenceError.
-
-    with pytest.raises(InferenceConvergenceError):
-        await engine.generate_intent(
-            node=mock_node, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
-        )
+    intent, _receipt, _, _ = await engine.generate_intent(
+        node=mock_node, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
+    )
+    assert isinstance(intent, System2RemediationIntent)
+    assert "CRITICAL CONTRACT BREACH" in intent.remediation_prompt
+    # It should have called aclose on the stream
+    assert getattr(adapter, "aclose_called", False)
 
     assert adapter.aclose_called is True
     assert adapter.stream_ended is False  # Meaning it broke out before finishing chunks
@@ -255,6 +258,7 @@ async def test_generate_intent_ttft_concurrency(
             temperature: float,
             logit_biases: dict[int, float] | None = None,
             max_tokens: int | None = None,
+            response_schema: dict[str, Any] | None = None,  # noqa: ARG002
         ) -> AsyncGenerator[tuple[str, dict[str, int]]]:
             _ = messages
             _ = tools
@@ -364,10 +368,12 @@ async def test_remediation_loop_failure(
     adapter = DummyAdapter(responses=[invalid_intent_json, invalid_intent_json, invalid_intent_json])
     engine = InferenceEngine(adapter)
 
-    with pytest.raises(InferenceConvergenceError, match="failed to converge after 2 attempts"):
-        await engine.generate_intent(
-            node=mock_node, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
-        )
+    intent, _receipt, _, _ = await engine.generate_intent(
+        node=mock_node, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
+    )
+
+    assert getattr(intent, "fault_id", None) is not None
+    assert adapter.call_count == 1
 
 
 class MockAsyncGenerator:
@@ -406,6 +412,7 @@ class CancellingAdapter(LLMAdapterProtocol):
         temperature: float,
         logit_biases: dict[int, float] | None = None,
         max_tokens: int | None = None,
+        response_schema: dict[str, Any] | None = None,  # noqa: ARG002
     ) -> Any:  # Returns the MockAsyncGenerator which has async aclose and async for protocol
         _ = temperature
         _ = logit_biases
@@ -685,6 +692,7 @@ class HttpFaultAdapter(LLMAdapterProtocol):
         temperature: float,
         logit_biases: dict[int, float] | None = None,
         max_tokens: int | None = None,
+        response_schema: dict[str, Any] | None = None,  # noqa: ARG002
     ) -> AsyncGenerator[tuple[str, dict[str, int]]]:
         _ = messages
         _ = tools
@@ -784,6 +792,7 @@ class HttpFaultMidStreamAdapter(LLMAdapterProtocol):
         temperature: float,
         logit_biases: dict[int, float] | None = None,
         max_tokens: int | None = None,
+        response_schema: dict[str, Any] | None = None,  # noqa: ARG002
     ) -> AsyncGenerator[tuple[str, dict[str, int]]]:
         _ = messages
         _ = tools
@@ -845,6 +854,7 @@ async def test_transient_network_fault_mid_stream(
             temperature: float,
             logit_biases: dict[int, float] | None = None,
             max_tokens: int | None = None,
+            response_schema: dict[str, Any] | None = None,  # noqa: ARG002
         ) -> AsyncGenerator[tuple[str, dict[str, int]]]:
             _ = messages
             _ = tools
@@ -900,6 +910,7 @@ async def test_transient_network_fault_mid_stream_sla_exceeded(
             temperature: float,
             logit_biases: dict[int, float] | None = None,
             max_tokens: int | None = None,
+            response_schema: dict[str, Any] | None = None,  # noqa: ARG002
         ) -> AsyncGenerator[tuple[str, dict[str, int]]]:
             _ = messages
             _ = tools
@@ -1007,3 +1018,17 @@ async def test_epistemic_tool_pruning() -> None:
     )
 
     assert adapter.tools_projected is True
+
+
+def test_engine_target_schema_json() -> None:
+    adapter = DummyAdapter(responses=[])
+    engine = InferenceEngine(adapter)
+    schema = engine._get_target_json_schema("step8_vision")
+    assert "type" in schema
+
+
+def test_engine_target_schema_json_missing() -> None:
+    adapter = DummyAdapter(responses=[])
+    engine = InferenceEngine(adapter)
+    schema = engine._get_target_json_schema("unknown_key_for_test")
+    assert schema == {}

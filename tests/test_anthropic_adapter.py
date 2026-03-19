@@ -151,3 +151,18 @@ async def test_anthropic_adapter_stream_response_decode_error(adapter: Anthropic
             chunks.append(chunk)
 
         assert chunks == []
+
+
+@pytest.mark.asyncio
+async def test_anthropic_adapter_structured_output() -> None:
+    adapter = AnthropicAdapter("https://test.anthropic.com", "test-key")
+    payload = adapter._prepare_request_payload(
+        messages=[{"role": "user", "content": "test"}],
+        tools=[],
+        temperature=0.0,
+        response_schema={"type": "object", "properties": {"a": {"type": "string"}}},
+    )
+    assert payload["tool_choice"]["type"] == "tool"
+    assert payload["tool_choice"]["name"] == "yield_target_schema"
+    assert len(payload["tools"]) == 1
+    assert payload["tools"][0]["name"] == "yield_target_schema"

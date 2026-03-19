@@ -12,7 +12,7 @@ from collections.abc import AsyncGenerator
 from typing import Any
 
 import tiktoken
-from coreason_manifest.spec.ontology import ComputeRateContract, PeftAdapterContract
+from coreason_manifest.spec.ontology import ComputeRateContract, LatentScratchpadReceipt, PeftAdapterContract
 
 from coreason_inference_engine.adapters.http_adapter import BaseHttpAdapter
 
@@ -142,7 +142,7 @@ class OpenAIAdapter(BaseHttpAdapter):
         self,
         payload: dict[str, Any],
         headers: dict[str, str],
-    ) -> AsyncGenerator[tuple[str, dict[str, int]]]:
+    ) -> AsyncGenerator[tuple[str, dict[str, int], LatentScratchpadReceipt | None]]:
         # OpenAI headers are fairly standard, passed from BaseHttpAdapter
         async with self.client.stream("POST", self.api_url, json=payload, headers=headers) as response:
             response.raise_for_status()
@@ -175,6 +175,6 @@ class OpenAIAdapter(BaseHttpAdapter):
                             }
 
                         if delta or usage:
-                            yield delta, usage
+                            yield delta, usage, None
                     except json.JSONDecodeError:
                         pass

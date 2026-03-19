@@ -70,8 +70,8 @@ class LLMAdapterProtocol(Protocol):
         temperature: float,
         logit_biases: dict[int, float] | None = None,
         max_tokens: int | None = None,
-        response_schema: dict[str, Any] | None = None,
-    ) -> AsyncGenerator[tuple[str, dict[str, int]]]:
+        **kwargs: Any,
+    ) -> AsyncGenerator[tuple[str, dict[str, int], LatentScratchpadReceipt | None]]:
         """
         Yields chunked string deltas and an optional usage dictionary.
         The final yield MUST contain the {"input_tokens": x, "output_tokens": y} mapping.

@@ -1,11 +1,12 @@
 from collections.abc import AsyncGenerator
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from coreason_manifest.spec.ontology import (
     ActionSpaceManifest,
     AgentNodeProfile,
     EpistemicLedgerState,
+    LatentScratchpadReceipt,
     PeftAdapterContract,
     PermissionBoundaryPolicy,
     SideEffectProfile,
@@ -43,8 +44,8 @@ class DummyReflexAdapter(LLMAdapterProtocol):
         temperature: float,
         logit_biases: dict[int, float] | None = None,
         max_tokens: int | None = None,
-        response_schema: dict[str, Any] | None = None,  # noqa: ARG002
-    ) -> AsyncGenerator[tuple[str, dict[str, int]]]:
+        **_kwargs: Any,
+    ) -> AsyncGenerator[tuple[str, dict[str, int], LatentScratchpadReceipt | None]]:
         # use arguments to avoid unused variable warning while keeping function signature intact
         _ = messages
         _ = tools
@@ -52,12 +53,12 @@ class DummyReflexAdapter(LLMAdapterProtocol):
         _ = logit_biases
         self.max_tokens_received.append(max_tokens)
         if self.call_count >= len(self.responses):
-            yield "", {"input_tokens": 0, "output_tokens": 0}
+            yield "", {"input_tokens": 0, "output_tokens": 0}, None
             return
 
         resp = self.responses[self.call_count]
         self.call_count += 1
-        yield resp, {"input_tokens": 10, "output_tokens": 10}
+        yield resp, {"input_tokens": 10, "output_tokens": 10}, None
 
 
 @pytest.fixture
@@ -218,7 +219,7 @@ async def test_reflex_fast_path_fallback_unallowed_tool(
 
 
 @pytest.mark.asyncio
-async def test_reflex_fast_path_empty_passive_tools(
+async def test_reflex_fast_path_empty_passivetools(
     mock_ledger: EpistemicLedgerState, mock_action_space: ActionSpaceManifest
 ) -> None:
     node = AgentNodeProfile(
@@ -283,14 +284,14 @@ async def test_reflex_fast_path_missing_usage(
             temperature: float,
             logit_biases: dict[int, float] | None = None,
             max_tokens: int | None = None,
-            response_schema: dict[str, Any] | None = None,  # noqa: ARG002
-        ) -> AsyncGenerator[tuple[str, dict[str, int]]]:
+            **_kwargs: Any,
+        ) -> AsyncGenerator[tuple[str, dict[str, int], LatentScratchpadReceipt | None]]:
             _ = messages
             _ = tools
             _ = temperature
             _ = logit_biases
             self.max_tokens_received.append(max_tokens)
-            yield fast_path_response, {}
+            yield fast_path_response, cast("dict[str, int]", {}), None
 
     adapter = MissingUsageAdapter(responses=[])
     engine = InferenceEngine(adapter)
@@ -321,15 +322,15 @@ async def test_reflex_fast_path_exception(
             temperature: float,
             logit_biases: dict[int, float] | None = None,
             max_tokens: int | None = None,
-            response_schema: dict[str, Any] | None = None,  # noqa: ARG002
-        ) -> AsyncGenerator[tuple[str, dict[str, int]]]:
+            **_kwargs: Any,
+        ) -> AsyncGenerator[tuple[str, dict[str, int], LatentScratchpadReceipt | None]]:
             _ = messages
             _ = tools
             _ = temperature
             _ = logit_biases
             if max_tokens == 150:
                 raise ValueError("Some random error")
-            yield "", {"input_tokens": 10, "output_tokens": 10}
+            yield "", {"input_tokens": 10, "output_tokens": 10}, None
 
     adapter = ExceptionAdapter(responses=[])
     engine = InferenceEngine(adapter)

@@ -8,7 +8,7 @@
 
 import asyncio
 from collections.abc import AsyncGenerator
-from typing import Any
+from typing import Any, cast
 
 import httpx
 import pytest
@@ -18,6 +18,7 @@ from coreason_manifest.spec.ontology import (
     CognitiveFormatContract,
     EpistemicLedgerState,
     EpistemicRewardModelPolicy,
+    LatentScratchpadReceipt,
     PeftAdapterContract,
     SelfCorrectionPolicy,
     System2RemediationIntent,
@@ -49,24 +50,26 @@ class DummyAdapter(LLMAdapterProtocol):
 
     async def generate_stream(
         self,
-        _messages: list[dict[str, Any]],
-        _tools: list[dict[str, Any]],
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
         temperature: float,
         logit_biases: dict[int, float] | None = None,
         max_tokens: int | None = None,
-        response_schema: dict[str, Any] | None = None,  # noqa: ARG002
-    ) -> AsyncGenerator[tuple[str, dict[str, int]]]:
+        **_kwargs: Any,
+    ) -> AsyncGenerator[tuple[str, dict[str, int], LatentScratchpadReceipt | None]]:
+        _ = messages
+        _ = tools
         _ = temperature
         _ = logit_biases
         self.max_tokens_received.append(max_tokens)
         if self.call_count >= len(self.responses):
-            yield "", {"input_tokens": 0, "output_tokens": 0}
+            yield "", {"input_tokens": 0, "output_tokens": 0}, None
             return
 
         resp = self.responses[self.call_count]
         self.call_count += 1
 
-        yield resp, {"input_tokens": 10, "output_tokens": 10}
+        yield resp, {"input_tokens": 10, "output_tokens": 10}, None
 
 
 class SeveredStreamAdapter(LLMAdapterProtocol):
@@ -88,18 +91,20 @@ class SeveredStreamAdapter(LLMAdapterProtocol):
 
     async def generate_stream(
         self,
-        _messages: list[dict[str, Any]],
-        _tools: list[dict[str, Any]],
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
         temperature: float,
         logit_biases: dict[int, float] | None = None,
         max_tokens: int | None = None,
-        response_schema: dict[str, Any] | None = None,  # noqa: ARG002
-    ) -> AsyncGenerator[tuple[str, dict[str, int]]]:
+        **_kwargs: Any,
+    ) -> AsyncGenerator[tuple[str, dict[str, int], LatentScratchpadReceipt | None]]:
+        _ = messages
+        _ = tools
         _ = temperature
         _ = logit_biases
         _ = max_tokens
         # Simulate returning a string response but omitting usage metrics entirely
-        yield self.response, {}
+        yield self.response, cast("dict[str, int]", {}), None
 
 
 @pytest.fixture
@@ -153,8 +158,8 @@ async def test_ijson_early_termination(
             temperature: float,
             logit_biases: dict[int, float] | None = None,
             max_tokens: int | None = None,
-            response_schema: dict[str, Any] | None = None,  # noqa: ARG002
-        ) -> AsyncGenerator[tuple[str, dict[str, int]]]:
+            **_kwargs: Any,
+        ) -> AsyncGenerator[tuple[str, dict[str, int], LatentScratchpadReceipt | None]]:
             _ = messages
             _ = tools
             _ = temperature
@@ -172,11 +177,11 @@ async def test_ijson_early_termination(
                 def __aiter__(self) -> "AsyncGenWrapper":
                     return self
 
-                async def __anext__(self) -> tuple[str, dict[str, int]]:
+                async def __anext__(self) -> tuple[str, dict[str, int], Any]:
                     if self.idx < len(chunks):
                         c = chunks[self.idx]
                         self.idx += 1
-                        return c, {"input_tokens": 10, "output_tokens": 0}
+                        return c, {"input_tokens": 10, "output_tokens": 0}, None
                     self.parent.stream_ended = True
                     raise StopAsyncIteration
 
@@ -258,15 +263,15 @@ async def test_generate_intent_ttft_concurrency(
             temperature: float,
             logit_biases: dict[int, float] | None = None,
             max_tokens: int | None = None,
-            response_schema: dict[str, Any] | None = None,  # noqa: ARG002
-        ) -> AsyncGenerator[tuple[str, dict[str, int]]]:
+            **_kwargs: Any,
+        ) -> AsyncGenerator[tuple[str, dict[str, int], LatentScratchpadReceipt | None]]:
             _ = messages
             _ = tools
             _ = temperature
             _ = logit_biases
             _ = max_tokens
             await asyncio.sleep(0.01)  # Yield to event loop, forcing concurrency
-            yield valid_intent_json, {"input_tokens": 10, "output_tokens": 10}
+            yield valid_intent_json, {"input_tokens": 10, "output_tokens": 10}, None
 
     adapter = DelayingAdapter()
 
@@ -407,13 +412,15 @@ class CancellingAdapter(LLMAdapterProtocol):
 
     def generate_stream(
         self,
-        _messages: list[dict[str, Any]],
-        _tools: list[dict[str, Any]],
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
         temperature: float,
         logit_biases: dict[int, float] | None = None,
         max_tokens: int | None = None,
-        response_schema: dict[str, Any] | None = None,  # noqa: ARG002
+        **_kwargs: Any,
     ) -> Any:  # Returns the MockAsyncGenerator which has async aclose and async for protocol
+        _ = messages
+        _ = tools
         _ = temperature
         _ = logit_biases
         _ = max_tokens
@@ -692,8 +699,8 @@ class HttpFaultAdapter(LLMAdapterProtocol):
         temperature: float,
         logit_biases: dict[int, float] | None = None,
         max_tokens: int | None = None,
-        response_schema: dict[str, Any] | None = None,  # noqa: ARG002
-    ) -> AsyncGenerator[tuple[str, dict[str, int]]]:
+        **_kwargs: Any,
+    ) -> AsyncGenerator[tuple[str, dict[str, int], LatentScratchpadReceipt | None]]:
         _ = messages
         _ = tools
         _ = temperature
@@ -708,7 +715,7 @@ class HttpFaultAdapter(LLMAdapterProtocol):
             resp = httpx.Response(status_code, request=req)
             raise httpx.HTTPStatusError("Fault", request=req, response=resp)
 
-        yield response, {"input_tokens": 10, "output_tokens": 20}
+        yield response, {"input_tokens": 10, "output_tokens": 20}, None
 
 
 @pytest.mark.asyncio
@@ -792,8 +799,8 @@ class HttpFaultMidStreamAdapter(LLMAdapterProtocol):
         temperature: float,
         logit_biases: dict[int, float] | None = None,
         max_tokens: int | None = None,
-        response_schema: dict[str, Any] | None = None,  # noqa: ARG002
-    ) -> AsyncGenerator[tuple[str, dict[str, int]]]:
+        **_kwargs: Any,
+    ) -> AsyncGenerator[tuple[str, dict[str, int], LatentScratchpadReceipt | None]]:
         _ = messages
         _ = tools
         _ = temperature
@@ -808,19 +815,17 @@ class HttpFaultMidStreamAdapter(LLMAdapterProtocol):
             resp = httpx.Response(status_code, request=req)
             raise httpx.HTTPStatusError("Fault", request=req, response=resp)
 
-        yield response, {"input_tokens": 10, "output_tokens": 20}
-
+        yield response, {"input_tokens": 10, "output_tokens": 20}, None
         # Then fault mid-stream if we have another status code that is bad
         # Let's just create a mock generator that fails on the first yield
         # The first case already covers generator creation failure.
         # This will be similar, but let's test where it yields then fails.
 
-    def generate_stream_faulty(self, *args: Any, **kwargs: Any) -> Any:
+    def generate_stream_faulty(self, *args: Any, **_kwargs: Any) -> Any:
         _ = args
-        _ = kwargs
 
-        async def mock_gen() -> AsyncGenerator[tuple[str, dict[str, int]]]:
-            yield "part1", {"input_tokens": 10, "output_tokens": 0}
+        async def mock_gen() -> AsyncGenerator[tuple[str, dict[str, int], LatentScratchpadReceipt | None]]:
+            yield "part1", {"input_tokens": 10, "output_tokens": 0}, None
             req = httpx.Request("POST", "http://test")
             resp = httpx.Response(502, request=req)
             raise httpx.HTTPStatusError("Fault", request=req, response=resp)
@@ -854,8 +859,8 @@ async def test_transient_network_fault_mid_stream(
             temperature: float,
             logit_biases: dict[int, float] | None = None,
             max_tokens: int | None = None,
-            response_schema: dict[str, Any] | None = None,  # noqa: ARG002
-        ) -> AsyncGenerator[tuple[str, dict[str, int]]]:
+            **_kwargs: Any,
+        ) -> AsyncGenerator[tuple[str, dict[str, int], LatentScratchpadReceipt | None]]:
             _ = messages
             _ = tools
             _ = temperature
@@ -863,7 +868,7 @@ async def test_transient_network_fault_mid_stream(
             _ = max_tokens
             self.call_count += 1
             if self.call_count == 1:
-                yield "part1", {"input_tokens": 10, "output_tokens": 0}
+                yield "part1", {"input_tokens": 10, "output_tokens": 0}, None
                 req = httpx.Request("POST", "http://test")
                 resp = httpx.Response(502, request=req)
                 raise httpx.HTTPStatusError("Fault", request=req, response=resp)
@@ -871,6 +876,7 @@ async def test_transient_network_fault_mid_stream(
                 yield (
                     '{"type": "informational", "message": "hello", "timeout_action": "proceed_default"}',
                     {"input_tokens": 10, "output_tokens": 20},
+                    None,
                 )
 
     adapter = MidStreamFaultAdapter()
@@ -910,15 +916,15 @@ async def test_transient_network_fault_mid_stream_sla_exceeded(
             temperature: float,
             logit_biases: dict[int, float] | None = None,
             max_tokens: int | None = None,
-            response_schema: dict[str, Any] | None = None,  # noqa: ARG002
-        ) -> AsyncGenerator[tuple[str, dict[str, int]]]:
+            **_kwargs: Any,
+        ) -> AsyncGenerator[tuple[str, dict[str, int], LatentScratchpadReceipt | None]]:
             _ = messages
             _ = tools
             _ = temperature
             _ = logit_biases
             _ = max_tokens
             self.call_count += 1
-            yield "part1", {"input_tokens": 10, "output_tokens": 0}
+            yield "part1", {"input_tokens": 10, "output_tokens": 0}, None
             req = httpx.Request("POST", "http://test")
             resp = httpx.Response(502, request=req)
             raise httpx.HTTPStatusError("Fault", request=req, response=resp)

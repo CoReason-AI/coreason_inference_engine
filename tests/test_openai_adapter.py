@@ -110,7 +110,7 @@ async def test_openai_adapter_stream_response(adapter: OpenAIAdapter) -> None:
     ):
         chunks = []
         usages = []
-        async for chunk, usage in adapter.generate_stream(messages=[], tools=[], temperature=0.0):
+        async for chunk, usage, _ in adapter.generate_stream(messages=[], tools=[], temperature=0.0):
             if chunk:
                 chunks.append(chunk)
             if usage:
@@ -147,7 +147,7 @@ async def test_openai_adapter_stream_response_decode_error_and_empty(adapter: Op
         patch.object(adapter.client, "stream", return_value=MockStreamContext()),
     ):
         chunks = []
-        async for chunk, _usage in adapter.generate_stream(messages=[], tools=[], temperature=0.0):
+        async for chunk, _usage, _ in adapter.generate_stream(messages=[], tools=[], temperature=0.0):
             chunks.append(chunk)
 
         assert chunks == []

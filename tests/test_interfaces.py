@@ -70,14 +70,15 @@ class DummyLLMAdapter:
         temperature: float,
         logit_biases: dict[int, float] | None = None,
         max_tokens: int | None = None,
-    ) -> AsyncGenerator[tuple[str, dict[str, int]]]:
+        **_kwargs: Any,
+    ) -> AsyncGenerator[tuple[str, dict[str, int], LatentScratchpadReceipt | None]]:
         # Workaround unused args
         _ = messages
         _ = tools
         _ = temperature
         _ = logit_biases
         _ = max_tokens
-        yield "dummy_chunk", {"input_tokens": 10, "output_tokens": 5}
+        yield "dummy_chunk", {"input_tokens": 10, "output_tokens": 5}, None
 
 
 @pytest.mark.asyncio

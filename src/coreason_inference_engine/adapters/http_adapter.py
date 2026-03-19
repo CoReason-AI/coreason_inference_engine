@@ -11,7 +11,7 @@ from collections.abc import AsyncGenerator
 from typing import Any
 
 import httpx
-from coreason_manifest.spec.ontology import ComputeRateContract, PeftAdapterContract
+from coreason_manifest.spec.ontology import ComputeRateContract, LatentScratchpadReceipt, PeftAdapterContract
 
 from coreason_inference_engine.interfaces import LLMAdapterProtocol
 from coreason_inference_engine.utils.network import validate_url_for_ssrf
@@ -99,7 +99,8 @@ class BaseHttpAdapter(LLMAdapterProtocol):
         temperature: float,
         logit_biases: dict[int, float] | None = None,
         max_tokens: int | None = None,
-    ) -> AsyncGenerator[tuple[str, dict[str, int]]]:
+        **kwargs: Any,  # noqa: ARG002
+    ) -> AsyncGenerator[tuple[str, dict[str, int], LatentScratchpadReceipt | None]]:
         """
         Yields chunked string deltas and an optional usage dictionary.
         The final yield MUST contain the {"input_tokens": x, "output_tokens": y} mapping.
@@ -117,12 +118,12 @@ class BaseHttpAdapter(LLMAdapterProtocol):
 
         # Send POST request, yield chunks
         # Need to return async generator
-        async for chunk, usage in self._stream_response(payload, headers):
-            yield chunk, usage
+        async for chunk, usage, receipt in self._stream_response(payload, headers):
+            yield chunk, usage, receipt
 
     async def _stream_response(
         self, payload: dict[str, Any], headers: dict[str, str]
-    ) -> AsyncGenerator[tuple[str, dict[str, int]]]:
+    ) -> AsyncGenerator[tuple[str, dict[str, int], LatentScratchpadReceipt | None]]:
         # We must use client.stream
         async with self.client.stream("POST", self.api_url, json=payload, headers=headers) as response:
             response.raise_for_status()
@@ -155,6 +156,6 @@ class BaseHttpAdapter(LLMAdapterProtocol):
                                 "output_tokens": data["usage"].get("completion_tokens", 0),
                             }
 
-                        yield delta, usage
+                        yield delta, usage, None
                     except json.JSONDecodeError:
                         pass

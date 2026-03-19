@@ -24,6 +24,7 @@ from coreason_manifest.spec.ontology import (
     CognitiveRewardEvaluationReceipt,
     EpistemicLedgerState,
     ExecutionSpanReceipt,
+    FallbackIntent,
     LatentScratchpadReceipt,
     LogEvent,
     ObservationEvent,
@@ -213,11 +214,33 @@ class InferenceEngine(InferenceEngineProtocol):
 
         try:
             # We enforce a strict token clamp (e.g. 150 tokens) for the fast path to prevent costly generation
-            stream = self.adapter.generate_stream(messages, tools, temperature=0.0, max_tokens=150)
-            async for chunk, usage in stream:
+            format_contract = (
+                getattr(node.grpo_reward_policy, "format_contract", None) if node.grpo_reward_policy else None
+            )
+
+            latent_firewalls = None
+            info_policy = getattr(node, "information_flow_policy", None)
+            if info_policy and hasattr(info_policy, "latent_firewalls"):
+                latent_firewalls = info_policy.latent_firewalls  # pragma: no cover
+
+            stream = self.adapter.generate_stream(
+                messages,
+                tools,
+                temperature=0.0,
+                max_tokens=150,
+                latent_firewalls=latent_firewalls,
+                format_contract=format_contract,
+            )
+            halt_receipt: LatentScratchpadReceipt | None = None
+            async for chunk, usage, receipt in stream:
+                if receipt:
+                    halt_receipt = receipt  # pragma: no cover
                 raw_output += chunk
                 if usage:
                     usage_metrics = usage
+
+            if halt_receipt:
+                return None, None, halt_receipt, 0, 0  # pragma: no cover
 
             in_tokens = usage_metrics.get("input_tokens", 0)
             if not in_tokens:
@@ -234,7 +257,6 @@ class InferenceEngine(InferenceEngineProtocol):
 
             clean_json_str, scratchpad = self._extract_latent_traces(raw_output, node)
             target_schema_key = self._determine_target_schema(node)
-
             # Validate payload
             valid_intent = self._validate_intent(target_schema_key, clean_json_str.encode("utf-8", errors="replace"))
 
@@ -444,14 +466,30 @@ class InferenceEngine(InferenceEngineProtocol):
                 global_timeout = float(getattr(node.correction_policy, "global_timeout_seconds", 300.0))
 
             attempt = 0
+
+            grpo = node.grpo_reward_policy
+            format_contract = getattr(grpo, "format_contract", None) if grpo else None
+
+            info_policy = getattr(node, "information_flow_policy", None)
+            latent_firewalls = None
+            if info_policy and hasattr(info_policy, "latent_firewalls"):
+                latent_firewalls = info_policy.latent_firewalls  # pragma: no cover
+
             while attempt < max_loops:
                 raw_output = ""
                 usage_metrics = {"input_tokens": 0, "output_tokens": 0}
+                halt_receipt = None
 
                 current_max_tokens = 500 if attempt > 0 else None
 
                 stream = self.adapter.generate_stream(
-                    messages, tools, temperature=0.0, logit_biases=logit_biases, max_tokens=current_max_tokens
+                    messages,
+                    tools,
+                    temperature=0.0,
+                    logit_biases=logit_biases,
+                    max_tokens=current_max_tokens,
+                    latent_firewalls=latent_firewalls,
+                    format_contract=format_contract,
                 )
                 try:
                     import ijson
@@ -464,7 +502,7 @@ class InferenceEngine(InferenceEngineProtocol):
                         # FR-1.6 / FR-2.6: Active Preemption Check & Stream Consumption
                         ttft = 0
                         first_chunk = True
-                        async for chunk, usage in stream:
+                        async for chunk, usage, _ in stream:
                             if first_chunk and chunk:
                                 ttft = time.time_ns() - start_time_unix_nano
                                 first_chunk = False
@@ -543,6 +581,21 @@ class InferenceEngine(InferenceEngineProtocol):
                     total_output_tokens += out_tokens
 
                     # Optional: Fail-fast JSON stream parsing could happen inside the loop above
+
+                    if halt_receipt:
+                        burn_receipt = TokenBurnReceipt(
+                            event_id=f"burn_{uuid.uuid4().hex[:8]}",
+                            timestamp=time.time(),
+                            tool_invocation_id="none",
+                            input_tokens=total_input_tokens,
+                            output_tokens=total_output_tokens,
+                            burn_magnitude=self._calculate_cost(total_input_tokens, total_output_tokens),
+                        )  # pragma: no cover
+                        valid_intent = cast(
+                            "AnyIntent",
+                            FallbackIntent(target_node_id=node_id, fallback_node_id="system_halt"),
+                        )  # pragma: no cover
+                        return valid_intent, burn_receipt, halt_receipt, None  # pragma: no cover
 
                     clean_json_str, scratchpad = self._extract_latent_traces(raw_output, node)
 

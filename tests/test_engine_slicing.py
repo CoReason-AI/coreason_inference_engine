@@ -15,6 +15,7 @@ from coreason_manifest.spec.ontology import (
     CognitiveStateProfile,
     EpistemicLedgerState,
     InformationClassificationProfile,
+    LatentScratchpadReceipt,
     ObservationEvent,
     SemanticSlicingPolicy,
     System2RemediationIntent,
@@ -28,24 +29,30 @@ class TokenCountingAdapter(LLMAdapterProtocol):
     rate_card: Any = None
     """An adapter where each char is 1 token to easily test ceiling bounds."""
 
-    def count_tokens(self, text: str) -> int:
-        return len(text)
-
     def project_tools(self, schemas: list[dict[str, Any]]) -> list[dict[str, Any]]:
         return schemas
+
+    def count_tokens(self, text: str) -> int:
+        return len(text)
 
     async def apply_peft_adapters(self, adapters: list[Any]) -> None:
         pass
 
     async def generate_stream(
         self,
-        _messages: list[dict[str, Any]],
-        _tools: list[dict[str, Any]],
-        _temperature: float,
-        _logit_biases: dict[int, float] | None = None,
-        _max_tokens: int | None = None,
-    ) -> AsyncGenerator[tuple[str, dict[str, int]]]:
-        yield "response", {"input_tokens": 0, "output_tokens": 0}
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        temperature: float,
+        logit_biases: dict[int, float] | None = None,
+        max_tokens: int | None = None,
+        **_kwargs: Any,
+    ) -> AsyncGenerator[tuple[str, dict[str, int], LatentScratchpadReceipt | None]]:
+        _ = messages
+        _ = tools
+        _ = temperature
+        _ = logit_biases
+        _ = max_tokens
+        yield "response", {"input_tokens": 0, "output_tokens": 0}, None
 
 
 def test_null_policy_no_eviction() -> None:

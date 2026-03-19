@@ -111,10 +111,10 @@ async def test_hallucinated_tool_escalation(
         nonlocal attempt_counter
         if attempt_counter == 0:
             attempt_counter += 1
-            yield json.dumps(hallucinated_payload), {"input_tokens": 10, "output_tokens": 10}
+            yield json.dumps(hallucinated_payload), {"input_tokens": 10, "output_tokens": 10}, None
         else:
             attempt_counter += 1
-            yield json.dumps(valid_payload), {"input_tokens": 10, "output_tokens": 10}
+            yield json.dumps(valid_payload), {"input_tokens": 10, "output_tokens": 10}, None
 
     mock_adapter.generate_stream = mock_stream  # type: ignore
 

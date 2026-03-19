@@ -9,7 +9,11 @@
 from typing import Any
 
 from coreason_manifest.spec.ontology import System2RemediationIntent
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
+
+
+class ConstrainedDecodingPolicy(BaseModel):
+    pass
 
 
 def generate_correction_prompt(error: ValidationError, target_node_id: str, fault_id: str) -> System2RemediationIntent:

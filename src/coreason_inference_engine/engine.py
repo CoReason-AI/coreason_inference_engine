@@ -5,7 +5,6 @@
 # A copy of the license is available at https://prosperitylicense.com/versions/3.0.0
 # For details, see the LICENSE file.
 # Commercial use beyond a 30-day trial requires a separate license.
-
 import asyncio
 import hashlib
 import hmac
@@ -140,6 +139,33 @@ class InferenceEngine(InferenceEngineProtocol):
             return clean_json_str, receipt
 
         return raw_output, None
+
+    def _get_target_json_schema(self, schema_key: str) -> dict[str, Any]:
+        from coreason_manifest.spec.ontology import (
+            CognitiveStateProfile,
+            DocumentLayoutManifest,
+            StateMutationIntent,
+            System2RemediationIntent,
+        )
+
+        registry = {
+            "step8_vision": DocumentLayoutManifest,
+            "state_differential": StateMutationIntent,
+            "cognitive_sync": CognitiveStateProfile,
+            "system2_remediation": System2RemediationIntent,
+        }
+
+        if schema_key in ("intent", "state_differential", "symbolic_handoff", "AnyIntent"):
+            from coreason_manifest.spec.ontology import AnyIntent, ToolInvocationEvent
+            from pydantic import TypeAdapter
+
+            patched_intent = AnyIntent | ToolInvocationEvent | StateMutationIntent | System2RemediationIntent
+            return TypeAdapter(patched_intent).json_schema()
+
+        target_schema = registry.get(schema_key)
+        if target_schema is not None:
+            return dict(target_schema.model_json_schema())
+        return {}
 
     def _determine_target_schema(self, node: AgentNodeProfile) -> str:
         if node.interventional_policy is not None:
@@ -377,10 +403,12 @@ class InferenceEngine(InferenceEngineProtocol):
             )
 
             # Import the correct event type
+            # Yield a valid AnyStateEvent to prevent Pydantic validation crashes in the Ledger
+            import typing
+
             from coreason_manifest.spec.ontology import SystemFaultEvent
 
-            # Yield a valid AnyStateEvent to prevent Pydantic validation crashes in the Ledger
-            error_intent = cast(
+            error_intent = typing.cast(
                 "AnyIntent",
                 SystemFaultEvent(
                     event_id=f"fault_{uuid.uuid4().hex[:8]}",
@@ -482,6 +510,16 @@ class InferenceEngine(InferenceEngineProtocol):
 
                 current_max_tokens = 500 if attempt > 0 else None
 
+                response_schema = None
+                domain_ext = getattr(node, "domain_extensions", None)
+                has_constrained = isinstance(domain_ext, dict) and "constrained_decoding" in domain_ext
+                has_format = getattr(node, "grpo_reward_policy", None) and getattr(
+                    node.grpo_reward_policy, "format_contract", None
+                )
+                target_schema_key = self._determine_target_schema(node)
+                if has_constrained or has_format:
+                    response_schema = self._get_target_json_schema(target_schema_key)
+
                 stream = self.adapter.generate_stream(
                     messages,
                     tools,
@@ -516,26 +554,28 @@ class InferenceEngine(InferenceEngineProtocol):
                                 parser.send(chunk.encode("utf-8", errors="replace"))
                                 for prefix, event, value in events:
                                     if prefix == "" and event == "map_key":
-                                        # Only specific top-level keys are expected in AnyIntent structures
-                                        allowed_keys = {
-                                            "tool_name",
-                                            "parameters",
-                                            "agent_attestation",
-                                            "zk_proof",  # ToolInvocationEvent
-                                            "mutations",
-                                            "ledger_hash_pre",
-                                            "ledger_hash_post",  # StateMutationIntent
-                                            "fault_id",
-                                            "target_node_id",
-                                            "failing_pointers",
-                                            "remediation_prompt",  # System2RemediationIntent
-                                        }
-                                        if (
-                                            value not in allowed_keys
-                                            and value != "type"
-                                            and value != "event_id"
-                                            and value != "timestamp"
-                                        ):
+                                        # Dynamic extraction of allowed keys from the target schema
+                                        schema_dict = response_schema or self._get_target_json_schema(target_schema_key)
+                                        allowed_keys: set[str] = set()
+
+                                        def extract_props(schema: Any, keys_set: set[str]) -> None:
+                                            if not isinstance(schema, dict):
+                                                return
+                                            if "properties" in schema:
+                                                keys_set.update(schema["properties"].keys())
+                                            for val in schema.values():
+                                                if isinstance(val, dict):
+                                                    extract_props(val, keys_set)
+                                                elif isinstance(val, list):
+                                                    for item in val:
+                                                        extract_props(item, keys_set)
+
+                                        extract_props(schema_dict, allowed_keys)
+
+                                        # Always allow base event keys
+                                        allowed_keys.update({"type", "event_id", "timestamp"})
+
+                                        if value not in allowed_keys:
                                             structural_violation = True
                                             break
                                 events.clear()
@@ -546,7 +586,32 @@ class InferenceEngine(InferenceEngineProtocol):
                             if structural_violation:
                                 # Sever connection immediately to save output tokens
                                 await stream.aclose()
-                                break
+
+                                # Fast-return remediation intent
+                                remediation_intent = System2RemediationIntent(
+                                    fault_id=f"fault_{uuid.uuid4().hex[:8]}",
+                                    target_node_id=node_id or "",
+                                    failing_pointers=["/"],
+                                    remediation_prompt="CRITICAL CONTRACT BREACH: An immediate top-level structural "
+                                    "violation was detected during streaming. Correct your JSON projection.",
+                                )
+
+                                invocation_cid = "none"
+                                burn_receipt = TokenBurnReceipt(
+                                    event_id=f"burn_{uuid.uuid4().hex[:8]}",
+                                    timestamp=time.time(),
+                                    tool_invocation_id=invocation_cid,
+                                    input_tokens=total_input_tokens + usage_metrics.get("input_tokens", 0),
+                                    output_tokens=total_output_tokens + usage_metrics.get("output_tokens", 0),
+                                    burn_magnitude=self._calculate_cost(
+                                        total_input_tokens + usage_metrics.get("input_tokens", 0),
+                                        total_output_tokens + usage_metrics.get("output_tokens", 0),
+                                    ),
+                                )
+
+                                import typing
+
+                                return typing.cast("AnyIntent", remediation_intent), burn_receipt, None, None
 
                     except httpx.HTTPStatusError as e:
                         if e.response.status_code in (429, 502, 503):
@@ -630,7 +695,7 @@ class InferenceEngine(InferenceEngineProtocol):
                             )
 
                     # Check for tool invocation ID
-                    invocation_cid = valid_intent.event_id if isinstance(valid_intent, ToolInvocationEvent) else None
+                    invocation_cid = valid_intent.event_id if isinstance(valid_intent, ToolInvocationEvent) else "none"
 
                     # Build tracking receipt
                     end_time_unix_nano = time.time_ns()
@@ -676,6 +741,8 @@ class InferenceEngine(InferenceEngineProtocol):
                             calculated_r_path=1.0,  # Proxy values since full topological execution is out of scope here
                             total_advantage_score=1.0,
                         )
+
+                    from typing import cast
 
                     return cast("AnyIntent", valid_intent), burn_receipt, scratchpad, cognitive_receipt
 

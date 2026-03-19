@@ -199,3 +199,16 @@ async def test_openai_adapter_apply_peft_adapters_fallback_ttl(adapter: OpenAIAd
         mock_post.assert_called_once()
         _, kwargs = mock_post.call_args
         assert kwargs["json"]["eviction_ttl_seconds"] == 3600
+
+
+@pytest.mark.asyncio
+async def test_openai_adapter_structured_output() -> None:
+    adapter = OpenAIAdapter("https://test.openai.com", "test-key")
+    payload = adapter._prepare_request_payload(
+        messages=[{"role": "user", "content": "test"}],
+        tools=[],
+        temperature=0.0,
+        response_schema={"type": "object", "properties": {"a": {"type": "string"}}},
+    )
+    assert payload["response_format"]["type"] == "json_schema"
+    assert payload["response_format"]["json_schema"]["strict"] is True

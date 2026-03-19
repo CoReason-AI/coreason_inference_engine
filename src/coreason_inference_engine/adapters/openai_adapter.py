@@ -111,6 +111,7 @@ class OpenAIAdapter(BaseHttpAdapter):
         temperature: float,
         logit_biases: dict[int, float] | None = None,
         max_tokens: int | None = None,
+        response_schema: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Prepares the JSON payload for OpenAI."""
         payload: dict[str, Any] = {
@@ -125,8 +126,15 @@ class OpenAIAdapter(BaseHttpAdapter):
             payload["tools"] = tools
         if logit_biases:
             payload["logit_bias"] = logit_biases
+
         if max_tokens is not None:
             payload["max_tokens"] = max_tokens
+
+        if response_schema:
+            payload["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {"name": "target_schema", "schema": response_schema, "strict": True},
+            }
 
         return payload
 

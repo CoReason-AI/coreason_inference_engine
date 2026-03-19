@@ -112,7 +112,7 @@ async def test_anthropic_adapter_stream_response(adapter: AnthropicAdapter) -> N
     ):
         chunks = []
         usages = []
-        async for chunk, usage in adapter.generate_stream(messages=[], tools=[], temperature=0.0):
+        async for chunk, usage, _ in adapter.generate_stream(messages=[], tools=[], temperature=0.0):
             chunks.append(chunk)
             usages.append(usage)
 
@@ -147,7 +147,7 @@ async def test_anthropic_adapter_stream_response_decode_error(adapter: Anthropic
         patch.object(adapter.client, "stream", return_value=MockStreamContext()),
     ):
         chunks = []
-        async for chunk, _usage in adapter.generate_stream(messages=[], tools=[], temperature=0.0):
+        async for chunk, _usage, _ in adapter.generate_stream(messages=[], tools=[], temperature=0.0):
             chunks.append(chunk)
 
         assert chunks == []

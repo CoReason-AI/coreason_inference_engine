@@ -88,3 +88,4 @@ omit = ["tests/*"]
 
 [tool.deptry.per_rule_ignores]
 DEP002 = ["httpx", "ijson", "pydantic", "tiktoken", "coreason-manifest", "fastapi", "uvicorn"]
+DEP001 = ["vllm", "torch", "outlines"]

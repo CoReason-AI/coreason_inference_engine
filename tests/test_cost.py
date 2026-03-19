@@ -1,9 +1,10 @@
 from collections.abc import AsyncGenerator
-from typing import Any
+from typing import Any, cast
 
 from coreason_manifest.spec.ontology import (
     AgentNodeProfile,
     InterventionalCausalTask,
+    LatentScratchpadReceipt,
     LogitSteganographyContract,
 )
 
@@ -43,10 +44,9 @@ class MockAdapterWithCost(LLMAdapterProtocol):
         temperature: float,  # noqa: ARG002
         logit_biases: dict[int, float] | None = None,  # noqa: ARG002
         max_tokens: int | None = None,  # noqa: ARG002
-        response_schema: dict[str, Any] | None = None,  # noqa: ARG002
-        decoding_policy: Any | None = None,  # noqa: ARG002
-    ) -> AsyncGenerator[tuple[str, dict[str, int]]]:
-        yield "", {}
+        **_kwargs: Any,
+    ) -> AsyncGenerator[tuple[str, dict[str, int], LatentScratchpadReceipt | None]]:
+        yield "", cast("dict[str, int]", {}), None
 
 
 def test_calculate_cost_with_rate_card() -> None:

@@ -64,7 +64,7 @@ async def test_base_http_adapter_success(mock_adapter: BaseHttpAdapter) -> None:
     ):
         chunks = []
         usages = []
-        async for chunk, usage in mock_adapter.generate_stream(messages=[], tools=[], temperature=0.0):
+        async for chunk, usage, _ in mock_adapter.generate_stream(messages=[], tools=[], temperature=0.0):
             chunks.append(chunk)
             usages.append(usage)
 
@@ -90,7 +90,7 @@ async def test_base_http_adapter_network_failure(mock_adapter: BaseHttpAdapter) 
         patch.object(mock_adapter.client, "stream", return_value=MockStreamContext()),
         pytest.raises(httpx.HTTPStatusError),
     ):
-        async for _chunk, _usage in mock_adapter.generate_stream(messages=[], tools=[], temperature=0.0):
+        async for _chunk, _usage, _ in mock_adapter.generate_stream(messages=[], tools=[], temperature=0.0):
             pass
 
 
@@ -160,7 +160,7 @@ async def test_base_http_adapter_stream_response_decode_error(mock_adapter: Base
         patch.object(mock_adapter.client, "stream", return_value=MockStreamContext()),
     ):
         chunks = []
-        async for chunk, _usage in mock_adapter.generate_stream(messages=[], tools=[], temperature=0.0):
+        async for chunk, _usage, _ in mock_adapter.generate_stream(messages=[], tools=[], temperature=0.0):
             chunks.append(chunk)
 
         # no valid json, chunks should be empty (though we might yield empty strings based on current naive parsing)

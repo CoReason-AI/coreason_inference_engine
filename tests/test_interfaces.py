@@ -70,6 +70,7 @@ class DummyLLMAdapter:
         temperature: float,
         logit_biases: dict[int, float] | None = None,
         max_tokens: int | None = None,
+        response_schema: dict[str, Any] | None = None,  # noqa: ARG002
     ) -> AsyncGenerator[tuple[str, dict[str, int]]]:
         # Workaround unused args
         _ = messages

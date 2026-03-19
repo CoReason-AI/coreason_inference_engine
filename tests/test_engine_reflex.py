@@ -43,6 +43,7 @@ class DummyReflexAdapter(LLMAdapterProtocol):
         temperature: float,
         logit_biases: dict[int, float] | None = None,
         max_tokens: int | None = None,
+        response_schema: dict[str, Any] | None = None,  # noqa: ARG002
     ) -> AsyncGenerator[tuple[str, dict[str, int]]]:
         # use arguments to avoid unused variable warning while keeping function signature intact
         _ = messages
@@ -282,6 +283,7 @@ async def test_reflex_fast_path_missing_usage(
             temperature: float,
             logit_biases: dict[int, float] | None = None,
             max_tokens: int | None = None,
+            response_schema: dict[str, Any] | None = None,  # noqa: ARG002
         ) -> AsyncGenerator[tuple[str, dict[str, int]]]:
             _ = messages
             _ = tools
@@ -319,6 +321,7 @@ async def test_reflex_fast_path_exception(
             temperature: float,
             logit_biases: dict[int, float] | None = None,
             max_tokens: int | None = None,
+            response_schema: dict[str, Any] | None = None,  # noqa: ARG002
         ) -> AsyncGenerator[tuple[str, dict[str, int]]]:
             _ = messages
             _ = tools

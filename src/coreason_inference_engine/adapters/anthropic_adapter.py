@@ -117,6 +117,7 @@ class AnthropicAdapter(BaseHttpAdapter):
         temperature: float,
         logit_biases: dict[int, float] | None = None,  # noqa: ARG002
         max_tokens: int | None = None,
+        response_schema: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Prepares the JSON payload for Anthropic."""
         system_prompt = ""
@@ -145,6 +146,18 @@ class AnthropicAdapter(BaseHttpAdapter):
 
         if tools:
             payload["tools"] = tools
+
+        if response_schema:
+            # Enforce output by appending as a tool and forcing selection
+            forced_tool = {
+                "name": "yield_target_schema",
+                "description": "Yield the final structured output",
+                "input_schema": response_schema,
+            }
+            if "tools" not in payload:
+                payload["tools"] = []
+            payload["tools"].append(forced_tool)
+            payload["tool_choice"] = {"type": "tool", "name": "yield_target_schema"}
 
         return payload
 

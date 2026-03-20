@@ -6,7 +6,6 @@
 # For details, see the LICENSE file.
 # Commercial use beyond a 30-day trial requires a separate license.
 
-from typing import Any
 
 from coreason_manifest.spec.ontology import System2RemediationIntent
 from pydantic import BaseModel, ValidationError
@@ -45,31 +44,3 @@ def generate_correction_prompt(error: ValidationError, target_node_id: str, faul
         failing_pointers=failing_pointers,
         remediation_prompt=remediation_prompt,
     )
-
-
-def validate_payload(step: str, payload_bytes: bytes) -> Any:
-    """Validate a payload against the designated ontology step model.
-
-    Raises:
-        ValueError: If the `step` parameter is unknown.
-        ValidationError: If `payload_bytes` does not conform to the schema.
-    """
-    from coreason_manifest.spec.ontology import (
-        CognitiveStateProfile,
-        DocumentLayoutManifest,
-        StateMutationIntent,
-        System2RemediationIntent,
-    )
-
-    schema_registry: dict[str, Any] = {
-        "step8_vision": DocumentLayoutManifest,
-        "state_differential": StateMutationIntent,
-        "cognitive_sync": CognitiveStateProfile,
-        "system2_remediation": System2RemediationIntent,
-    }
-
-    target_schema = schema_registry.get(step)
-    if not target_schema:
-        raise ValueError(f"FATAL: Unknown step '{step}'. Valid steps: {list(schema_registry.keys())}")
-
-    return target_schema.model_validate_json(payload_bytes)

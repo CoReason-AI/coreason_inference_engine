@@ -109,6 +109,7 @@ class BaseHttpAdapter(LLMAdapterProtocol):
         # SSRF Firewall: run target URI through ipaddress bogon filter
         await validate_url_for_ssrf(self.api_url)
 
+        response_schema = kwargs.get("response_schema")
         payload = self._prepare_request_payload(messages, tools, temperature, logit_biases, max_tokens, response_schema)
 
         headers = {

@@ -742,8 +742,6 @@ class InferenceEngine(InferenceEngineProtocol):
                             total_advantage_score=1.0,
                         )
 
-                    from typing import cast
-
                     return cast("AnyIntent", valid_intent), burn_receipt, scratchpad, cognitive_receipt
 
                 except ValidationError as e:

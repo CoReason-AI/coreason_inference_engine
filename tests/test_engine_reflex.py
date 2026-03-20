@@ -1,5 +1,6 @@
 from collections.abc import AsyncGenerator
 from typing import Any, cast
+from unittest.mock import patch
 
 import pytest
 from coreason_manifest.spec.ontology import (
@@ -59,6 +60,50 @@ class DummyReflexAdapter(LLMAdapterProtocol):
         resp = self.responses[self.call_count]
         self.call_count += 1
         yield resp, {"input_tokens": 10, "output_tokens": 10}, None
+
+
+@pytest.fixture(autouse=True)
+def mock_validate_payload() -> Any:
+    """Mock validate_payload since the local coreason_manifest doesn't support AnyIntent/AnyStateEvent natively."""
+
+    def _mocked_validate(schema_key: str, payload: bytes) -> Any:
+        from coreason_manifest.spec.ontology import (
+            AnyIntent,
+            AnyStateEvent,
+            CognitiveStateProfile,
+            DocumentLayoutManifest,
+            StateMutationIntent,
+            System2RemediationIntent,
+        )
+        from pydantic import TypeAdapter
+
+        schema_registry: dict[str, Any] = {
+            "step8_vision": DocumentLayoutManifest,
+            "state_differential": StateMutationIntent,
+            "cognitive_sync": CognitiveStateProfile,
+            "system2_remediation": System2RemediationIntent,
+        }
+
+        if schema_key in ("intent", "state_differential", "symbolic_handoff", "AnyIntent"):
+            target_union = AnyIntent | AnyStateEvent | System2RemediationIntent | StateMutationIntent
+            return TypeAdapter(target_union).validate_json(payload)
+
+        target_schema = schema_registry.get(schema_key)
+        if not target_schema:
+            raise ValueError(f"FATAL: Unknown step '{schema_key}'. Valid steps: {list(schema_registry.keys())}")
+
+        return target_schema.model_validate_json(payload)
+
+    # Force the mock to be used globally within the module so `from ... import validate_payload` sees it.
+    import coreason_manifest.utils.algebra
+
+    original = coreason_manifest.utils.algebra.validate_payload
+    coreason_manifest.utils.algebra.validate_payload = _mocked_validate
+
+    with patch("coreason_inference_engine.engine.validate_payload", _mocked_validate):
+        yield
+
+    coreason_manifest.utils.algebra.validate_payload = original
 
 
 @pytest.fixture

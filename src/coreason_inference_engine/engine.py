@@ -13,13 +13,14 @@ import random
 import re
 import time
 import uuid
-from typing import Any, cast
+from typing import Any
 
 import httpx
 from coreason_manifest.spec.ontology import (
     ActionSpaceManifest,
     AgentNodeProfile,
     AnyIntent,
+    AnyStateEvent,
     CognitiveRewardEvaluationReceipt,
     EpistemicLedgerState,
     ExecutionSpanReceipt,
@@ -34,7 +35,8 @@ from coreason_manifest.spec.ontology import (
     TokenBurnReceipt,
     ToolInvocationEvent,
 )
-from pydantic import TypeAdapter, ValidationError
+from coreason_manifest.utils.algebra import validate_payload
+from pydantic import ValidationError
 
 from coreason_inference_engine.context import ContextHydrator
 from coreason_inference_engine.interfaces import (
@@ -43,7 +45,7 @@ from coreason_inference_engine.interfaces import (
     LLMAdapterProtocol,
 )
 from coreason_inference_engine.utils.telemetry import TelemetryEmitter
-from coreason_inference_engine.utils.validation import generate_correction_prompt, validate_payload
+from coreason_inference_engine.utils.validation import generate_correction_prompt
 
 
 class InferenceEngine(InferenceEngineProtocol):
@@ -144,7 +146,6 @@ class InferenceEngine(InferenceEngineProtocol):
         from coreason_manifest.spec.ontology import (
             CognitiveStateProfile,
             DocumentLayoutManifest,
-            StateMutationIntent,
             System2RemediationIntent,
         )
 
@@ -156,15 +157,19 @@ class InferenceEngine(InferenceEngineProtocol):
         }
 
         if schema_key in ("intent", "state_differential", "symbolic_handoff", "AnyIntent"):
-            from coreason_manifest.spec.ontology import AnyIntent, ToolInvocationEvent
+            from coreason_manifest.spec.ontology import AnyIntent, AnyStateEvent
             from pydantic import TypeAdapter
 
-            patched_intent = AnyIntent | ToolInvocationEvent | StateMutationIntent | System2RemediationIntent
-            return TypeAdapter(patched_intent).json_schema()
+            target_union = AnyIntent | AnyStateEvent | System2RemediationIntent
+            return TypeAdapter(target_union).json_schema()
 
         target_schema = registry.get(schema_key)
         if target_schema is not None:
-            return dict(target_schema.model_json_schema())
+            from pydantic import BaseModel
+
+            # Provide explicit typing check to satisfy mypy for type objects vs BaseModel
+            if issubclass(target_schema, BaseModel):
+                return dict(target_schema.model_json_schema())
         return {}
 
     def _determine_target_schema(self, node: AgentNodeProfile) -> str:
@@ -177,10 +182,6 @@ class InferenceEngine(InferenceEngineProtocol):
         return "intent"
 
     def _validate_intent(self, schema_key: str, payload: bytes) -> Any:
-        # StateMutationIntent does not have a "type" field natively, so we rely on a non-discriminated Union.
-        if schema_key in ("intent", "state_differential", "symbolic_handoff", "AnyIntent"):
-            patched_intent = AnyIntent | ToolInvocationEvent | StateMutationIntent | System2RemediationIntent
-            return TypeAdapter(patched_intent).validate_json(payload)
         return validate_payload(schema_key, payload)
 
     def _calculate_cost(self, input_tokens: int, output_tokens: int) -> int:
@@ -201,7 +202,7 @@ class InferenceEngine(InferenceEngineProtocol):
         ledger: EpistemicLedgerState,
         _node_id: str,
         action_space: ActionSpaceManifest,
-    ) -> tuple[AnyIntent | None, TokenBurnReceipt | None, LatentScratchpadReceipt | None, int, int]:
+    ) -> tuple[AnyIntent | AnyStateEvent | None, TokenBurnReceipt | None, LatentScratchpadReceipt | None, int, int]:
         """
         Executes the System 1 Fast-Path. Restricts tools to `allowed_passive_tools`.
         If the model yields a valid ToolInvocationEvent within the subset, returns it immediately.
@@ -298,7 +299,7 @@ class InferenceEngine(InferenceEngineProtocol):
                     burn_magnitude=self._calculate_cost(total_input_tokens, total_output_tokens),
                 )
                 return (
-                    cast("AnyIntent", valid_intent),
+                    valid_intent,
                     burn_receipt,
                     scratchpad,
                     total_input_tokens,
@@ -380,7 +381,12 @@ class InferenceEngine(InferenceEngineProtocol):
         ledger: EpistemicLedgerState,
         node_id: str,
         action_space: ActionSpaceManifest,
-    ) -> tuple[AnyIntent, TokenBurnReceipt, LatentScratchpadReceipt | None, CognitiveRewardEvaluationReceipt | None]:
+    ) -> tuple[
+        AnyIntent | AnyStateEvent | System2RemediationIntent,
+        TokenBurnReceipt,
+        LatentScratchpadReceipt | None,
+        CognitiveRewardEvaluationReceipt | None,
+    ]:
         """
         Translates the passive ledger into active generation.
         Executes Context Hydration, the Forward Pass, and System 2 Remediation.
@@ -404,17 +410,12 @@ class InferenceEngine(InferenceEngineProtocol):
 
             # Import the correct event type
             # Yield a valid AnyStateEvent to prevent Pydantic validation crashes in the Ledger
-            import typing
-
             from coreason_manifest.spec.ontology import SystemFaultEvent
 
-            error_intent = typing.cast(
-                "AnyIntent",
-                SystemFaultEvent(
-                    event_id=f"fault_{uuid.uuid4().hex[:8]}",
-                    timestamp=time.time(),
-                    type="system_fault",
-                ),
+            error_intent = SystemFaultEvent(
+                event_id=f"fault_{uuid.uuid4().hex[:8]}",
+                timestamp=time.time(),
+                type="system_fault",
             )
             receipt = TokenBurnReceipt(
                 event_id=f"burn_{uuid.uuid4().hex[:8]}",
@@ -609,9 +610,7 @@ class InferenceEngine(InferenceEngineProtocol):
                                     ),
                                 )
 
-                                import typing
-
-                                return typing.cast("AnyIntent", remediation_intent), burn_receipt, None, None
+                                return remediation_intent, burn_receipt, None, None
 
                     except httpx.HTTPStatusError as e:
                         if e.response.status_code in (429, 502, 503):
@@ -656,9 +655,8 @@ class InferenceEngine(InferenceEngineProtocol):
                             output_tokens=total_output_tokens,
                             burn_magnitude=self._calculate_cost(total_input_tokens, total_output_tokens),
                         )  # pragma: no cover
-                        valid_intent = cast(
-                            "AnyIntent",
-                            FallbackIntent(target_node_id=node_id, fallback_node_id="system_halt"),
+                        valid_intent = FallbackIntent(
+                            target_node_id=node_id, fallback_node_id="system_halt"
                         )  # pragma: no cover
                         return valid_intent, burn_receipt, halt_receipt, None  # pragma: no cover
 
@@ -742,7 +740,7 @@ class InferenceEngine(InferenceEngineProtocol):
                             total_advantage_score=1.0,
                         )
 
-                    return cast("AnyIntent", valid_intent), burn_receipt, scratchpad, cognitive_receipt
+                    return valid_intent, burn_receipt, scratchpad, cognitive_receipt
 
                 except ValidationError as e:
                     # FR-3.3, FR-3.4: Trap validation failure and generate mathematical reprimand

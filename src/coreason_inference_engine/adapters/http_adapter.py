@@ -100,7 +100,7 @@ class BaseHttpAdapter(LLMAdapterProtocol):
         temperature: float,
         logit_biases: dict[int, float] | None = None,
         max_tokens: int | None = None,
-        **kwargs: Any,  # noqa: ARG002
+        **kwargs: Any,
     ) -> AsyncGenerator[tuple[str, dict[str, int], LatentScratchpadReceipt | None]]:
         """
         Yields chunked string deltas and an optional usage dictionary.
@@ -109,6 +109,7 @@ class BaseHttpAdapter(LLMAdapterProtocol):
         # SSRF Firewall: run target URI through ipaddress bogon filter
         await validate_url_for_ssrf(self.api_url)
 
+        response_schema = kwargs.get("response_schema")
         payload = self._prepare_request_payload(messages, tools, temperature, logit_biases, max_tokens, response_schema)
 
         headers = {

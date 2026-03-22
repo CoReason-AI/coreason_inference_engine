@@ -103,7 +103,12 @@ class InferenceEngine(InferenceEngineProtocol):
             require_think_tags = node.grpo_reward_policy.format_contract.require_think_tags
 
         if not require_think_tags:
-            return raw_output, None
+            import re
+            clean_out = raw_output.strip()
+            json_match = re.search(r"```(?:json)?\s*(.*?)\s*```", clean_out, re.DOTALL)
+            if json_match:
+                clean_out = json_match.group(1).strip()
+            return clean_out, None
 
         start_tag = "<think>"
         end_tag = "</think>"
@@ -147,6 +152,7 @@ class InferenceEngine(InferenceEngineProtocol):
             CognitiveStateProfile,
             DocumentLayoutManifest,
             System2RemediationIntent,
+            StateMutationIntent,
         )
 
         registry = {
@@ -157,10 +163,10 @@ class InferenceEngine(InferenceEngineProtocol):
         }
 
         if schema_key in ("intent", "state_differential", "symbolic_handoff", "AnyIntent"):
-            from coreason_manifest.spec.ontology import AnyIntent, AnyStateEvent
+            from coreason_manifest.spec.ontology import AnyIntent, AnyStateEvent, StateMutationIntent
             from pydantic import TypeAdapter
 
-            target_union = AnyIntent | AnyStateEvent | System2RemediationIntent
+            target_union = AnyIntent | AnyStateEvent | System2RemediationIntent | StateMutationIntent
             return TypeAdapter(target_union).json_schema()
 
         target_schema = registry.get(schema_key)
@@ -182,6 +188,27 @@ class InferenceEngine(InferenceEngineProtocol):
         return "intent"
 
     def _validate_intent(self, schema_key: str, payload: bytes) -> Any:
+        if schema_key in ("intent", "symbolic_handoff", "AnyIntent"):
+            import json
+            from pydantic import TypeAdapter, ValidationError
+            from coreason_manifest.spec.ontology import AnyIntent, AnyStateEvent, System2RemediationIntent, StateMutationIntent
+            
+            # Local Patch: Manually intercept StateMutationIntent via Duck-Typing
+            # and strip hallucinated keys to respect CoreasonBaseState's extra='forbid'
+            try:
+                data = json.loads(payload.decode("utf-8"))
+                if isinstance(data, dict) and "op" in data and "path" in data:
+                    clean_data = {"op": data["op"], "path": data["path"]}
+                    if "value" in data: clean_data["value"] = data["value"]
+                    if "from" in data: clean_data["from"] = data["from"]
+                    if "from_path" in data: clean_data["from_path"] = data["from_path"]
+                    return StateMutationIntent.model_validate(clean_data)
+            except (json.JSONDecodeError, ValidationError, UnicodeDecodeError, TypeError):
+                pass
+                
+            target_union = AnyIntent | AnyStateEvent | System2RemediationIntent
+            return TypeAdapter(target_union).validate_json(payload)
+
         return validate_payload(schema_key, payload)
 
     def _calculate_cost(self, input_tokens: int, output_tokens: int) -> int:
@@ -574,43 +601,45 @@ class InferenceEngine(InferenceEngineProtocol):
                                         extract_props(schema_dict, allowed_keys)
 
                                         # Always allow base event keys
-                                        allowed_keys.update({"type", "event_id", "timestamp"})
+                                        allowed_keys.update({"type", "intent_type", "target_node_id", "event_id", "timestamp"})
 
                                         if value not in allowed_keys:
                                             structural_violation = True
                                             break
                                 events.clear()
-                            except ijson.JSONError, UnicodeEncodeError:
+                            except StopIteration:
+                                break
+                            except (ijson.JSONError, UnicodeEncodeError):
                                 # We ignore standard parse errors during streaming since it's incomplete
                                 events.clear()
 
                             if structural_violation:
-                                # Sever connection immediately to save output tokens
-                                await stream.aclose()
+                                break
 
-                                # Fast-return remediation intent
-                                remediation_intent = System2RemediationIntent(
-                                    fault_id=f"fault_{uuid.uuid4().hex[:8]}",
-                                    target_node_id=node_id or "",
-                                    failing_pointers=["/"],
-                                    remediation_prompt="CRITICAL CONTRACT BREACH: An immediate top-level structural "
-                                    "violation was detected during streaming. Correct your JSON projection.",
-                                )
+                        if structural_violation:
+                            # Fast-return remediation intent
+                            remediation_intent = System2RemediationIntent(
+                                fault_id=f"fault_{uuid.uuid4().hex[:8]}",
+                                target_node_id=node_id or "",
+                                failing_pointers=["/"],
+                                remediation_prompt="CRITICAL CONTRACT BREACH: An immediate top-level structural "
+                                "violation was detected during streaming. Correct your JSON projection.",
+                            )
 
-                                invocation_cid = "none"
-                                burn_receipt = TokenBurnReceipt(
-                                    event_id=f"burn_{uuid.uuid4().hex[:8]}",
-                                    timestamp=time.time(),
-                                    tool_invocation_id=invocation_cid,
-                                    input_tokens=total_input_tokens + usage_metrics.get("input_tokens", 0),
-                                    output_tokens=total_output_tokens + usage_metrics.get("output_tokens", 0),
-                                    burn_magnitude=self._calculate_cost(
-                                        total_input_tokens + usage_metrics.get("input_tokens", 0),
-                                        total_output_tokens + usage_metrics.get("output_tokens", 0),
-                                    ),
-                                )
+                            invocation_cid = "none"
+                            burn_receipt = TokenBurnReceipt(
+                                event_id=f"burn_{uuid.uuid4().hex[:8]}",
+                                timestamp=time.time(),
+                                tool_invocation_id=invocation_cid,
+                                input_tokens=total_input_tokens + usage_metrics.get("input_tokens", 0),
+                                output_tokens=total_output_tokens + usage_metrics.get("output_tokens", 0),
+                                burn_magnitude=self._calculate_cost(
+                                    total_input_tokens + usage_metrics.get("input_tokens", 0),
+                                    total_output_tokens + usage_metrics.get("output_tokens", 0),
+                                ),
+                            )
 
-                                return remediation_intent, burn_receipt, None, None
+                            return remediation_intent, burn_receipt, None, None
 
                     except httpx.HTTPStatusError as e:
                         if e.response.status_code in (429, 502, 503):
@@ -748,6 +777,8 @@ class InferenceEngine(InferenceEngineProtocol):
 
                     # CRITICAL: Pass exact DID string (node_id) to prevent remediation crash
                     remediation = generate_correction_prompt(error=e, target_node_id=node_id, fault_id=fault_id)
+
+                    print(f"\\n\\n=========== RAW LLM FALLBACK ===========\\n{raw_output}\\n========================================\\n\\n")
 
                     # Redact raw output
                     redacted_output = self.telemetry.redact_pii(

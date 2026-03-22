@@ -12,10 +12,12 @@ from typing import Any, Literal
 from coreason_manifest.spec.ontology import (
     AgentNodeProfile,
     AnyStateEvent,
+    ContinuousObservationStream,
     EpistemicLedgerState,
     ObservationEvent,
     System2RemediationIntent,
     ToolInvocationEvent,
+    StateMutationIntent
 )
 
 from coreason_inference_engine.utils.logger import logger
@@ -137,10 +139,23 @@ class ContextHydrator:
                             "content": typed_event.model_dump_json(),
                         }
                     )
+            
+            elif isinstance(typed_event, ContinuousObservationStream):
+                buffer_content = "\n".join(str(token) for token in typed_event.token_buffer)
+                messages.append({"role": "user", "content": buffer_content})
+
+            elif isinstance(typed_event, StateMutationIntent):
+                # Ensure the LLM remembers its own previously generated JSON objects
+                # so it maintains context of its continuous intent projection pattern.
+                messages.append({
+                    "role": "assistant",
+                    "content": typed_event.model_dump_json()
+                })
 
         if self.provider_mode == "anthropic":
             messages = self._apply_anthropic_grammar(messages)
 
+        print("\n\nDEBUG EXACT MESSAGES PAYLOAD:\n", json.dumps(messages, indent=2), "\n\n")
         return messages
 
     def _apply_anthropic_grammar(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:

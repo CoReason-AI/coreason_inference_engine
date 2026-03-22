@@ -24,17 +24,17 @@ class OpenAIAdapter(BaseHttpAdapter):
     including capturing stream usage options.
     """
 
-    def __init__(self, api_url: str, api_key: str, model_name: str = "gpt-4o", max_connections: int = 1000) -> None:
-        super().__init__(api_url, api_key, max_connections)
-        self.model_name = model_name
+    def __init__(self, api_url: str, api_key: str | None, model_name: str | None = None, max_connections: int = 1000) -> None:
+        super().__init__(api_url, api_key or "", max_connections)
+        self.model_name = model_name or "gpt-4o"
         self.rate_card = ComputeRateContract(
-            cost_per_million_input_tokens=5.0,
-            cost_per_million_output_tokens=15.0,
+            cost_per_million_input_tokens=5,
+            cost_per_million_output_tokens=15,
             magnitude_unit="USD",
         )
         # Pre-load the encoding for the model
         try:
-            self._encoding = tiktoken.encoding_for_model(model_name)
+            self._encoding = tiktoken.encoding_for_model(self.model_name)
         except KeyError:
             # Fallback to a standard encoding if model is unknown
             self._encoding = tiktoken.get_encoding("cl100k_base")

@@ -7,7 +7,7 @@
 # Commercial use beyond a 30-day trial requires a separate license.
 
 
-from coreason_manifest.spec.ontology import ManifestViolationReceipt, System2RemediationIntent
+from coreason_manifest.spec.ontology import System2RemediationIntent
 from pydantic import BaseModel, ValidationError
 
 
@@ -20,7 +20,8 @@ def generate_correction_prompt(error: ValidationError, target_node_id: str, faul
     Pure functional adapter. Maps a raw Pythonic pydantic.ValidationError into a
     language-model-legible System2RemediationIntent without triggering runtime side effects.
     """
-    violation_receipts: list[ManifestViolationReceipt] = []
+    failing_pointers = []
+    remediation_prompts = []
 
     for err in error.errors():
         loc_path = "".join(f"/{item!s}" for item in err["loc"]) if err["loc"] else "/"
@@ -34,16 +35,14 @@ def generate_correction_prompt(error: ValidationError, target_node_id: str, faul
         else:
             msg = str(err.get("msg", "Invalid structural payload."))
 
-        violation_receipts.append(
-            ManifestViolationReceipt(
-                failing_pointer=loc_path,
-                violation_type=err_type,
-                diagnostic_message=msg,
-            )
-        )
+        failing_pointers.append(loc_path)
+        remediation_prompts.append(msg)
+
+    combined_prompt = " ".join(remediation_prompts) if remediation_prompts else "Unknown schema validation error."
 
     return System2RemediationIntent(
         fault_id=fault_id,
         target_node_id=target_node_id,
-        violation_receipts=violation_receipts,
+        failing_pointers=failing_pointers or ["/"],
+        remediation_prompt=combined_prompt,
     )

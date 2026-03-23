@@ -12,7 +12,6 @@ from typing import Any, Literal
 from coreason_manifest.spec.ontology import (
     AgentNodeProfile,
     AnyStateEvent,
-    ContinuousObservationStream,
     EpistemicLedgerState,
     ObservationEvent,
     StateMutationIntent,
@@ -140,8 +139,8 @@ class ContextHydrator:
                         }
                     )
 
-            elif isinstance(typed_event, ContinuousObservationStream):
-                buffer_content = "\n".join(str(token) for token in typed_event.token_buffer)
+            elif type(typed_event).__name__ == "ContinuousObservationStream":
+                buffer_content = "\n".join(str(token) for token in getattr(typed_event, "token_buffer", []))
                 messages.append({"role": "user", "content": buffer_content})
 
             elif isinstance(typed_event, StateMutationIntent):

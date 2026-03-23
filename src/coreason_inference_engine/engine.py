@@ -42,14 +42,13 @@ from pydantic import ValidationError
 from coreason_inference_engine.context import ContextHydrator
 from coreason_inference_engine.interfaces import (
     InferenceConvergenceError,
-    InferenceEngineProtocol,
     LLMAdapterProtocol,
 )
 from coreason_inference_engine.utils.telemetry import TelemetryEmitter
 from coreason_inference_engine.utils.validation import generate_correction_prompt
 
 
-class InferenceEngine(InferenceEngineProtocol):
+class InferenceEngine:
     """The stateless cognitive bridge connecting deterministic rules to LLMs."""
 
     def __init__(
@@ -99,13 +98,13 @@ class InferenceEngine(InferenceEngineProtocol):
         self, raw_output: str, node: AgentNodeProfile
     ) -> tuple[str, LatentScratchpadReceipt | None]:
         # FR-3.1: Structural extraction of <think> tags
+        import re
+
         require_think_tags = False
         if node.grpo_reward_policy and node.grpo_reward_policy.format_contract:
             require_think_tags = node.grpo_reward_policy.format_contract.require_think_tags
 
         if not require_think_tags:
-            import re
-
             clean_out = raw_output.strip()
             json_match = re.search(r"```(?:json)?\s*(.*?)\s*```", clean_out, re.DOTALL)
             if json_match:
@@ -662,6 +661,12 @@ class InferenceEngine(InferenceEngineProtocol):
                                 break
 
                         if structural_violation:
+                            # Shield teardown to prevent API leakage
+                            import contextlib
+
+                            with contextlib.suppress(Exception):
+                                await asyncio.shield(stream.aclose())
+
                             # Fast-return remediation intent
                             remediation_intent = System2RemediationIntent(
                                 fault_id=f"fault_{uuid.uuid4().hex[:8]}",

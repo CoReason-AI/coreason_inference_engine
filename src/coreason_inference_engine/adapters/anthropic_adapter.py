@@ -23,13 +23,13 @@ class AnthropicAdapter(BaseHttpAdapter):
     """
 
     def __init__(
-        self, api_url: str, api_key: str, model_name: str = "claude-3-5-sonnet-20241022", max_connections: int = 1000
+        self, api_url: str, api_key: str | None, model_name: str | None = None, max_connections: int = 1000
     ) -> None:
-        super().__init__(api_url, api_key, max_connections)
-        self.model_name = model_name
+        super().__init__(api_url, api_key or "", max_connections)
+        self.model_name = model_name or "claude-3-5-sonnet-20241022"
         self.rate_card = ComputeRateContract(
-            cost_per_million_input_tokens=3.0,
-            cost_per_million_output_tokens=15.0,
+            cost_per_million_input_tokens=3,
+            cost_per_million_output_tokens=15,
             magnitude_unit="USD",
         )
         self._encoding = tiktoken.get_encoding("cl100k_base")

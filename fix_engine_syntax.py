@@ -1,6 +1,5 @@
-import re
 
-with open("src/coreason_inference_engine/engine.py", "r") as f:
+with open("src/coreason_inference_engine/engine.py") as f:
     engine_content = f.read()
 
 # Fix syntax error at line 754 "expected 'except' or 'finally' block"

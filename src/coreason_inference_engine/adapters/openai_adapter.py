@@ -12,7 +12,7 @@ from collections.abc import AsyncGenerator
 from typing import Any
 
 import tiktoken
-from coreason_manifest.spec.ontology import ComputeRateContract, LatentScratchpadReceipt, PeftAdapterContract
+from coreason_manifest.spec.ontology import ComputeRateContract
 
 from coreason_inference_engine.adapters.http_adapter import BaseHttpAdapter
 

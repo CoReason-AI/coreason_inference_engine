@@ -16,7 +16,6 @@ from coreason_manifest.spec.ontology import (
     CognitiveFormatContract,
     ComputeRateContract,
     LatentScratchpadReceipt,
-    PeftAdapterContract,
     SaeLatentPolicy,
     ThoughtBranchState,
 )

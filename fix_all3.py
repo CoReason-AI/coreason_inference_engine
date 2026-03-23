@@ -1,4 +1,3 @@
-import re
 import os
 
 test_files = [
@@ -14,7 +13,7 @@ test_files = [
 for file in test_files:
     if not os.path.exists(file):
         continue
-    with open(file, "r") as f:
+    with open(file) as f:
         content = f.read()
 
     # In tests/test_engine.py, test_epistemic_tool_pruning:

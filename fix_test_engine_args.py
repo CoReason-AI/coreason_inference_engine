@@ -1,4 +1,3 @@
-import re
 import os
 
 test_files = [
@@ -12,7 +11,7 @@ test_files = [
 for file in test_files:
     if not os.path.exists(file):
         continue
-    with open(file, "r") as f:
+    with open(file) as f:
         content = f.read()
 
     # The issue: intents are returning as dicts. `assert getattr(intent, "type", None) == "informational"`

@@ -9,7 +9,6 @@ from coreason_manifest.spec.ontology import (
     EpistemicLedgerState,
     PermissionBoundaryPolicy,
     SideEffectProfile,
-    ToolInvocationEvent,
     ToolManifest,
 )
 

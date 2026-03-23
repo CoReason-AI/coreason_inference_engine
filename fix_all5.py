@@ -1,6 +1,5 @@
-import re
 
-with open("src/coreason_inference_engine/adapters/dto.py", "r") as f:
+with open("src/coreason_inference_engine/adapters/dto.py") as f:
     content = f.read()
 
 content = content.replace(
@@ -12,7 +11,7 @@ with open("src/coreason_inference_engine/adapters/dto.py", "w") as f:
     f.write(content)
 
 
-with open("src/coreason_inference_engine/context.py", "r") as f:
+with open("src/coreason_inference_engine/context.py") as f:
     content = f.read()
 
 content = content.replace(

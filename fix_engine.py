@@ -1,7 +1,6 @@
 import re
-import os
 
-with open("src/coreason_inference_engine/engine.py", "r") as f:
+with open("src/coreason_inference_engine/engine.py") as f:
     engine_content = f.read()
 
 # Replace coreason_manifest imports

@@ -1,6 +1,5 @@
-import re
 
-with open("tests/test_context.py", "r") as f:
+with open("tests/test_context.py") as f:
     content = f.read()
 
 # Replace any lingering `ledger_dict = ledger.model_dump() if hasattr(ledger, 'model_dump') else ledger` to make sure it's fully defined.

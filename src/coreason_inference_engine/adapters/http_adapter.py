@@ -11,7 +11,6 @@ from collections.abc import AsyncGenerator
 from typing import Any
 
 import httpx
-from coreason_manifest.spec.ontology import ComputeRateContract, LatentScratchpadReceipt, PeftAdapterContract
 
 from coreason_inference_engine.interfaces import LLMAdapterProtocol
 from coreason_inference_engine.utils.network import validate_url_for_ssrf

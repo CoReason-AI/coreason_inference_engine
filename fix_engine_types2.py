@@ -1,4 +1,4 @@
-with open("src/coreason_inference_engine/engine.py", "r") as f:
+with open("src/coreason_inference_engine/engine.py") as f:
     content = f.read()
 
 content = content.replace(

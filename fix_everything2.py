@@ -1,4 +1,3 @@
-import re
 
 # Wait! The files in `src/` and `tests/` were literally reverted!
 # Why did this happen?

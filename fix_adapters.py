@@ -1,8 +1,7 @@
-import os
 import glob
 
 for file in glob.glob("src/coreason_inference_engine/adapters/*.py"):
-    with open(file, "r") as f:
+    with open(file) as f:
         content = f.read()
 
     # Apply PeftAdapterContract -> dict[str, Any]

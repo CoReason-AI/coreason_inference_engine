@@ -116,20 +116,20 @@ class InferenceEngine:
             content_hash = hashlib.sha256(think_content.encode("utf-8")).hexdigest()
             branch_id = f"branch_{uuid.uuid4().hex[:8]}"
 
-            branch = dict(
-                branch_id=branch_id,
-                parent_branch_id=None,
-                latent_content_hash=content_hash,
-                prm_score=None,
-            )
+            branch = {
+                "branch_id": branch_id,
+                "parent_branch_id": None,
+                "latent_content_hash": content_hash,
+                "prm_score": None,
+            }
 
-            receipt = dict(
-                trace_id=f"trace_{uuid.uuid4().hex[:8]}",
-                explored_branches=[branch],
-                discarded_branches=[],
-                resolution_branch_id=branch_id,
-                total_latent_tokens=self.adapter.count_tokens(think_content),
-            )
+            receipt = {
+                "trace_id": f"trace_{uuid.uuid4().hex[:8]}",
+                "explored_branches": [branch],
+                "discarded_branches": [],
+                "resolution_branch_id": branch_id,
+                "total_latent_tokens": self.adapter.count_tokens(think_content),
+            }
 
             return clean_json_str, receipt
 
@@ -203,27 +203,27 @@ class InferenceEngine:
                     import time
                     import uuid
 
-                    return dict(
-                        event_id=data.get("event_id", f"evt_{uuid.uuid4().hex[:8]}"),
-                        timestamp=data.get("timestamp", time.time()),
-                        type="tool_invocation",
-                        tool_name=data.get("tool_name", "unknown"),
-                        parameters=params,
+                    return {
+                        "event_id": data.get("event_id", f"evt_{uuid.uuid4().hex[:8]}"),
+                        "timestamp": data.get("timestamp", time.time()),
+                        "type": "tool_invocation",
+                        "tool_name": data.get("tool_name", "unknown"),
+                        "parameters": params,
                         # Provide explicit Nones/empty mocks for strict schema requirements
-                        authorized_budget_magnitude=1,
-                        agent_attestation=dict(
+                        "authorized_budget_magnitude": 1,
+                        "agent_attestation": dict(
                             training_lineage_hash="0" * 64,
                             developer_signature="mock",
                             capability_merkle_root="0" * 64,
                             credential_presentations=[],
                         ),
-                        zk_proof=dict(
+                        "zk_proof": dict(
                             proof_protocol="zk-SNARK",
                             public_inputs_hash="0" * 64,
                             verifier_key_id="mock-key",
                             cryptographic_blob="mock-blob",
                         ),
-                    )
+                    }
                 # --------------------------------------------------------
 
                 if isinstance(data, dict) and "op" in data and "path" in data:  # pragma: no cover
@@ -365,14 +365,14 @@ class InferenceEngine:
                 and valid_intent.get("tool_name") in allowed_tools
             ):
                 invocation_cid = valid_intent.get("event_id")
-                burn_receipt = dict(
-                    event_id=f"burn_{uuid.uuid4().hex[:8]}",
-                    timestamp=time.time(),
-                    tool_invocation_id=invocation_cid,
-                    input_tokens=total_input_tokens,
-                    output_tokens=total_output_tokens,
-                    burn_magnitude=self._calculate_cost(total_input_tokens, total_output_tokens),
-                )
+                burn_receipt = {
+                    "event_id": f"burn_{uuid.uuid4().hex[:8]}",
+                    "timestamp": time.time(),
+                    "tool_invocation_id": invocation_cid,
+                    "input_tokens": total_input_tokens,
+                    "output_tokens": total_output_tokens,
+                    "burn_magnitude": self._calculate_cost(total_input_tokens, total_output_tokens),
+                }
                 return (
                     valid_intent,
                     burn_receipt,
@@ -547,19 +547,19 @@ class InferenceEngine:
                 ToolInvocationEvent,
             )
 
-            error_intent = dict(
-                event_id=f"fault_{uuid.uuid4().hex[:8]}",
-                timestamp=time.time(),
-                type="system_fault",
-            )
-            receipt = dict(
-                event_id=f"burn_{uuid.uuid4().hex[:8]}",
-                timestamp=time.time(),
-                tool_invocation_id="none",
-                input_tokens=0,
-                output_tokens=0,
-                burn_magnitude=0,
-            )
+            error_intent = {
+                "event_id": f"fault_{uuid.uuid4().hex[:8]}",
+                "timestamp": time.time(),
+                "type": "system_fault",
+            }
+            receipt = {
+                "event_id": f"burn_{uuid.uuid4().hex[:8]}",
+                "timestamp": time.time(),
+                "tool_invocation_id": "none",
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "burn_magnitude": 0,
+            }
             return error_intent, receipt, None, None
 
         async with self._semaphore:
@@ -734,27 +734,27 @@ class InferenceEngine:
                                 await asyncio.shield(stream.aclose())
 
                             # Fast-return remediation intent
-                            remediation_intent = dict(
-                                type="system2_remediation",
-                                fault_id=f"fault_{uuid.uuid4().hex[:8]}",
-                                target_node_id=node_id or "",
-                                failing_pointers=["/"],
-                                remediation_prompt="CRITICAL CONTRACT BREACH: An immediate top-level structural "
+                            remediation_intent = {
+                                "type": "system2_remediation",
+                                "fault_id": f"fault_{uuid.uuid4().hex[:8]}",
+                                "target_node_id": node_id or "",
+                                "failing_pointers": ["/"],
+                                "remediation_prompt": "CRITICAL CONTRACT BREACH: An immediate top-level structural "
                                 "violation was detected during streaming. Correct your JSON projection.",
-                            )
+                            }
 
                             invocation_cid = "none"
-                            burn_receipt = dict(
-                                event_id=f"burn_{uuid.uuid4().hex[:8]}",
-                                timestamp=time.time(),
-                                tool_invocation_id=invocation_cid,
-                                input_tokens=total_input_tokens + usage_metrics.get("input_tokens", 0),
-                                output_tokens=total_output_tokens + usage_metrics.get("output_tokens", 0),
-                                burn_magnitude=self._calculate_cost(
+                            burn_receipt = {
+                                "event_id": f"burn_{uuid.uuid4().hex[:8]}",
+                                "timestamp": time.time(),
+                                "tool_invocation_id": invocation_cid,
+                                "input_tokens": total_input_tokens + usage_metrics.get("input_tokens", 0),
+                                "output_tokens": total_output_tokens + usage_metrics.get("output_tokens", 0),
+                                "burn_magnitude": self._calculate_cost(
                                     total_input_tokens + usage_metrics.get("input_tokens", 0),
                                     total_output_tokens + usage_metrics.get("output_tokens", 0),
                                 ),
-                            )
+                            }
 
                             return remediation_intent, burn_receipt, None, None
 
@@ -793,15 +793,15 @@ class InferenceEngine:
                     # Optional: Fail-fast JSON stream parsing could happen inside the loop above
 
                     if halt_receipt:
-                        burn_receipt = dict(
-                            event_id=f"burn_{uuid.uuid4().hex[:8]}",
-                            timestamp=time.time(),
-                            tool_invocation_id="none",
-                            input_tokens=total_input_tokens,
-                            output_tokens=total_output_tokens,
-                            burn_magnitude=self._calculate_cost(total_input_tokens, total_output_tokens),
-                        )  # pragma: no cover
-                        valid_intent = dict(target_node_id=node_id, fallback_node_id="system_halt")  # pragma: no cover
+                        burn_receipt = {
+                            "event_id": f"burn_{uuid.uuid4().hex[:8]}",
+                            "timestamp": time.time(),
+                            "tool_invocation_id": "none",
+                            "input_tokens": total_input_tokens,
+                            "output_tokens": total_output_tokens,
+                            "burn_magnitude": self._calculate_cost(total_input_tokens, total_output_tokens),
+                        }  # pragma: no cover
+                        valid_intent = {"target_node_id": node_id, "fallback_node_id": "system_halt"}  # pragma: no cover
                         return valid_intent, burn_receipt, halt_receipt, None  # pragma: no cover
 
                     clean_json_str, scratchpad = self._extract_latent_traces(raw_output, node)
@@ -877,14 +877,14 @@ class InferenceEngine:
                     )
                     await self.telemetry.emit(span)
 
-                    burn_receipt = dict(
-                        event_id=f"burn_{uuid.uuid4().hex[:8]}",
-                        timestamp=time.time(),
-                        tool_invocation_id=invocation_cid or "none",
-                        input_tokens=total_input_tokens,
-                        output_tokens=total_output_tokens,
-                        burn_magnitude=self._calculate_cost(total_input_tokens, total_output_tokens),
-                    )
+                    burn_receipt = {
+                        "event_id": f"burn_{uuid.uuid4().hex[:8]}",
+                        "timestamp": time.time(),
+                        "tool_invocation_id": invocation_cid or "none",
+                        "input_tokens": total_input_tokens,
+                        "output_tokens": total_output_tokens,
+                        "burn_magnitude": self._calculate_cost(total_input_tokens, total_output_tokens),
+                    }
 
                     cognitive_receipt: dict[str, Any] | None = None
                     if (

@@ -119,7 +119,6 @@ def mock_validate_payload() -> Any:
             CognitiveStateProfile,
             DocumentLayoutManifest,
             StateMutationIntent,
-            System2RemediationIntent,
         )
         from pydantic import TypeAdapter
 
@@ -688,7 +687,6 @@ async def test_local_backpressure_fail_fast(
             else mock_action_space,
         )
 
-        from coreason_manifest.spec.ontology import SystemFaultEvent
 
         assert isinstance(intent, dict) and intent.get("type") == "system_fault"
         assert intent.get("type") == "system_fault"

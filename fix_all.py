@@ -1,5 +1,5 @@
-import re
 import os
+import re
 
 test_files = [
     "tests/test_engine.py",
@@ -14,7 +14,7 @@ test_files = [
 for file in test_files:
     if not os.path.exists(file):
         continue
-    with open(file, "r") as f:
+    with open(file) as f:
         content = f.read()
 
     # We changed keyword arguments from node= to raw_node=, ledger= to raw_ledger=, action_space= to raw_action_space=

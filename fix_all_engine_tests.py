@@ -1,4 +1,4 @@
-with open("tests/test_engine.py", "r") as f:
+with open("tests/test_engine.py") as f:
     content = f.read()
 
 # Fix IndexError in list status_codes for test_transient_network_fault_sla_exceeded

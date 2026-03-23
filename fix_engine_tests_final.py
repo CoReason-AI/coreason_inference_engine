@@ -1,4 +1,4 @@
-with open("tests/test_engine.py", "r") as f:
+with open("tests/test_engine.py") as f:
     content = f.read()
 
 content = content.replace(

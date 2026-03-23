@@ -168,17 +168,22 @@ async def test_reflex_fast_path_success(
     engine = InferenceEngine(adapter)
 
     intent, receipt, _scratch, _ = await engine.generate_intent(
-        node=node, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
+        raw_node=node.model_dump() if hasattr(node, "model_dump") else node,
+        raw_ledger=mock_ledger.model_dump() if hasattr(mock_ledger, "model_dump") else mock_ledger,
+        node_id="did:test:1",
+        raw_action_space=mock_action_space.model_dump()
+        if hasattr(mock_action_space, "model_dump")
+        else mock_action_space,
     )
 
-    assert getattr(intent, "type", None) == "tool_invocation"
+    assert intent.get("type") == "tool_invocation"
     assert getattr(intent, "tool_name", None) == "fast_tool"
     assert adapter.call_count == 1
     assert adapter.max_tokens_received == [150]
     assert len(adapter.tools_projected[0]) == 1
     assert adapter.tools_projected[0][0]["tool_name"] == "fast_tool"
-    assert receipt.input_tokens == 10
-    assert receipt.output_tokens == 10
+    assert receipt.get("input_tokens") == 10
+    assert receipt.get("output_tokens") == 10
 
 
 @pytest.mark.asyncio
@@ -207,10 +212,15 @@ async def test_reflex_fast_path_fallback_invalid_intent(
     engine = InferenceEngine(adapter)
 
     intent, _receipt, _scratch, _ = await engine.generate_intent(
-        node=node, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
+        raw_node=node.model_dump() if hasattr(node, "model_dump") else node,
+        raw_ledger=mock_ledger.model_dump() if hasattr(mock_ledger, "model_dump") else mock_ledger,
+        node_id="did:test:1",
+        raw_action_space=mock_action_space.model_dump()
+        if hasattr(mock_action_space, "model_dump")
+        else mock_action_space,
     )
 
-    assert getattr(intent, "type", None) == "informational"
+    assert intent.get("type") == "informational"
     assert getattr(intent, "message", None) == "Deep thought result"
     assert adapter.call_count == 2
     assert adapter.max_tokens_received == [150, None]
@@ -256,10 +266,15 @@ async def test_reflex_fast_path_fallback_unallowed_tool(
     engine = InferenceEngine(adapter)
 
     intent, _receipt, _scratch, _ = await engine.generate_intent(
-        node=node, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
+        raw_node=node.model_dump() if hasattr(node, "model_dump") else node,
+        raw_ledger=mock_ledger.model_dump() if hasattr(mock_ledger, "model_dump") else mock_ledger,
+        node_id="did:test:1",
+        raw_action_space=mock_action_space.model_dump()
+        if hasattr(mock_action_space, "model_dump")
+        else mock_action_space,
     )
 
-    assert getattr(intent, "type", None) == "informational"
+    assert intent.get("type") == "informational"
     assert adapter.call_count == 2
 
 
@@ -283,10 +298,15 @@ async def test_reflex_fast_path_empty_passivetools(
     engine = InferenceEngine(adapter)
 
     intent, _receipt, _scratch, _ = await engine.generate_intent(
-        node=node, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
+        raw_node=node.model_dump() if hasattr(node, "model_dump") else node,
+        raw_ledger=mock_ledger.model_dump() if hasattr(mock_ledger, "model_dump") else mock_ledger,
+        node_id="did:test:1",
+        raw_action_space=mock_action_space.model_dump()
+        if hasattr(mock_action_space, "model_dump")
+        else mock_action_space,
     )
 
-    assert getattr(intent, "type", None) == "informational"
+    assert intent.get("type") == "informational"
     assert adapter.call_count == 1
     assert adapter.max_tokens_received == [None]
 
@@ -342,11 +362,16 @@ async def test_reflex_fast_path_missing_usage(
     engine = InferenceEngine(adapter)
 
     intent, receipt, _scratch, _ = await engine.generate_intent(
-        node=node, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
+        raw_node=node.model_dump() if hasattr(node, "model_dump") else node,
+        raw_ledger=mock_ledger.model_dump() if hasattr(mock_ledger, "model_dump") else mock_ledger,
+        node_id="did:test:1",
+        raw_action_space=mock_action_space.model_dump()
+        if hasattr(mock_action_space, "model_dump")
+        else mock_action_space,
     )
-    assert getattr(intent, "type", None) == "tool_invocation"
-    assert getattr(intent, "type", None) == "tool_invocation"
-    assert receipt.output_tokens > 0
+    assert intent.get("type") == "tool_invocation"
+    assert intent.get("type") == "tool_invocation"
+    assert receipt.get("output_tokens") > 0
 
 
 @pytest.mark.asyncio
@@ -382,7 +407,12 @@ async def test_reflex_fast_path_exception(
 
     with pytest.raises(InferenceConvergenceError):
         await engine.generate_intent(
-            node=node, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
+            raw_node=node.model_dump() if hasattr(node, "model_dump") else node,
+            raw_ledger=mock_ledger.model_dump() if hasattr(mock_ledger, "model_dump") else mock_ledger,
+            node_id="did:test:1",
+            raw_action_space=mock_action_space.model_dump()
+            if hasattr(mock_action_space, "model_dump")
+            else mock_action_space,
         )
 
 
@@ -426,9 +456,14 @@ async def test_reflex_fast_path_system_message_exists(
     engine.hydrator = NoSystemHydrator()  # type: ignore
 
     intent, _receipt, _scratch, _ = await engine.generate_intent(
-        node=node, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
+        raw_node=node.model_dump() if hasattr(node, "model_dump") else node,
+        raw_ledger=mock_ledger.model_dump() if hasattr(mock_ledger, "model_dump") else mock_ledger,
+        node_id="did:test:1",
+        raw_action_space=mock_action_space.model_dump()
+        if hasattr(mock_action_space, "model_dump")
+        else mock_action_space,
     )
-    assert getattr(intent, "type", None) == "tool_invocation"
+    assert intent.get("type") == "tool_invocation"
 
 
 @pytest.mark.asyncio
@@ -452,7 +487,12 @@ async def test_reflex_fast_path_validation_error(
     engine = InferenceEngine(adapter)
 
     intent, _receipt, _scratch, _ = await engine.generate_intent(
-        node=node, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
+        raw_node=node.model_dump() if hasattr(node, "model_dump") else node,
+        raw_ledger=mock_ledger.model_dump() if hasattr(mock_ledger, "model_dump") else mock_ledger,
+        node_id="did:test:1",
+        raw_action_space=mock_action_space.model_dump()
+        if hasattr(mock_action_space, "model_dump")
+        else mock_action_space,
     )
-    assert getattr(intent, "type", None) == "informational"
+    assert intent.get("type") == "informational"
     assert adapter.call_count == 2

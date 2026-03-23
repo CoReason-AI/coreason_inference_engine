@@ -68,6 +68,7 @@ class LocalAgentNodeProfile(BaseModel):
     """
 
     model_config = ConfigDict(extra="ignore")
+    description: str = ""
 
     baseline_cognitive_state: LocalCognitiveStateProfile | None = None
     correction_policy: LocalSelfCorrectionPolicy | None = None
@@ -102,3 +103,5 @@ class LocalLedgerState(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     history: list[dict[str, Any]] = Field(default_factory=list)
+    active_cascades: list[Any] | None = None
+    active_rollbacks: list[Any] | None = None

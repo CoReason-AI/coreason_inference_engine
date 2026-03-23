@@ -15,28 +15,17 @@ import uuid
 from typing import Any
 
 import httpx
+from typing import Any, cast
 from coreason_manifest.spec.ontology import (
-    ActionSpaceManifest,
-    AgentAttestationReceipt,
-    AgentNodeProfile,
-    AnyIntent,
-    AnyStateEvent,
-    CognitiveRewardEvaluationReceipt,
-    EpistemicLedgerState,
-    ExecutionSpanReceipt,
-    FallbackIntent,
-    LatentScratchpadReceipt,
     LogEvent,
-    ObservationEvent,
+    ExecutionSpanReceipt,
     SpanEvent,
-    StateMutationIntent,
-    System2RemediationIntent,
-    ThoughtBranchState,
-    TokenBurnReceipt,
     ToolInvocationEvent,
-    ZeroKnowledgeReceipt,
+    SystemFaultEvent,
 )
-from coreason_manifest.utils.algebra import validate_payload
+
+from coreason_inference_engine.adapters.dto import LocalActionSpace, LocalAgentNodeProfile, LocalLedgerState
+
 from pydantic import ValidationError
 
 from coreason_inference_engine.context import ContextHydrator
@@ -94,9 +83,7 @@ class InferenceEngine:
         # 5. Apply the logit scalar (bias) exclusively to the Green List
         return dict.fromkeys(green_list, contract.watermark_strength_delta)
 
-    def _extract_latent_traces(
-        self, raw_output: str, node: AgentNodeProfile
-    ) -> tuple[str, LatentScratchpadReceipt | None]:
+    def _extract_latent_traces(self, raw_output: str, node: LocalAgentNodeProfile) -> tuple[str, dict[str, Any] | None]:
         # FR-3.1: Structural extraction of <think> tags
         import re
 
@@ -129,14 +116,14 @@ class InferenceEngine:
             content_hash = hashlib.sha256(think_content.encode("utf-8")).hexdigest()
             branch_id = f"branch_{uuid.uuid4().hex[:8]}"
 
-            branch = ThoughtBranchState(
+            branch = dict(
                 branch_id=branch_id,
                 parent_branch_id=None,
                 latent_content_hash=content_hash,
                 prm_score=None,
             )
 
-            receipt = LatentScratchpadReceipt(
+            receipt = dict(
                 trace_id=f"trace_{uuid.uuid4().hex[:8]}",
                 explored_branches=[branch],
                 discarded_branches=[],
@@ -155,6 +142,8 @@ class InferenceEngine:
             System2RemediationIntent,
         )
 
+        from coreason_manifest.spec.ontology import StateMutationIntent
+
         registry = {
             "step8_vision": DocumentLayoutManifest,
             "state_differential": StateMutationIntent,
@@ -165,6 +154,8 @@ class InferenceEngine:
         if schema_key in ("intent", "state_differential", "symbolic_handoff", "AnyIntent"):
             from coreason_manifest.spec.ontology import AnyIntent, AnyStateEvent
             from pydantic import TypeAdapter
+
+            from coreason_manifest.spec.ontology import AnyIntent, AnyStateEvent, System2RemediationIntent
 
             target_union = AnyIntent | AnyStateEvent | System2RemediationIntent | StateMutationIntent
             return TypeAdapter(target_union).json_schema()
@@ -178,7 +169,7 @@ class InferenceEngine:
                 return dict(target_schema.model_json_schema())
         return {}
 
-    def _determine_target_schema(self, node: AgentNodeProfile) -> str:
+    def _determine_target_schema(self, node: LocalAgentNodeProfile) -> str:
         if node.interventional_policy is not None:
             return "state_differential"
 
@@ -212,7 +203,7 @@ class InferenceEngine:
                     import time
                     import uuid
 
-                    return ToolInvocationEvent.model_construct(
+                    return dict(
                         event_id=data.get("event_id", f"evt_{uuid.uuid4().hex[:8]}"),
                         timestamp=data.get("timestamp", time.time()),
                         type="tool_invocation",
@@ -220,13 +211,13 @@ class InferenceEngine:
                         parameters=params,
                         # Provide explicit Nones/empty mocks for strict schema requirements
                         authorized_budget_magnitude=1,
-                        agent_attestation=AgentAttestationReceipt(
+                        agent_attestation=dict(
                             training_lineage_hash="0" * 64,
                             developer_signature="mock",
                             capability_merkle_root="0" * 64,
                             credential_presentations=[],
                         ),
-                        zk_proof=ZeroKnowledgeReceipt(
+                        zk_proof=dict(
                             proof_protocol="zk-SNARK",
                             public_inputs_hash="0" * 64,
                             verifier_key_id="mock-key",
@@ -243,15 +234,26 @@ class InferenceEngine:
                         clean_data["from"] = data["from"]
                     if "from_path" in data:
                         clean_data["from_path"] = data["from_path"]
-                    return StateMutationIntent.model_construct(**clean_data)
+                    clean_data["type"] = "state_mutation"
+                    return clean_data
 
             except json.JSONDecodeError, ValidationError, UnicodeDecodeError, TypeError:
                 pass
 
-            target_union = AnyIntent | AnyStateEvent | System2RemediationIntent
-            return TypeAdapter(target_union).validate_json(payload)
+            from coreason_manifest.spec.ontology import AnyIntent, AnyStateEvent, System2RemediationIntent
 
-        return validate_payload(schema_key, payload)
+            target_union = AnyIntent | AnyStateEvent | System2RemediationIntent
+            res: Any = TypeAdapter(target_union).validate_json(payload)
+            if hasattr(res, "model_dump"):
+                return res.model_dump()
+            return dict(res)
+
+        from coreason_manifest.utils.algebra import validate_payload
+
+        out_res: Any = validate_payload(schema_key, payload)
+        if hasattr(out_res, "model_dump"):
+            return out_res.model_dump()
+        return dict(out_res)
 
     def _calculate_cost(self, input_tokens: int, output_tokens: int) -> int:
         rate_card = getattr(self.adapter, "rate_card", None)
@@ -267,11 +269,11 @@ class InferenceEngine:
 
     async def _evaluate_system1_reflex(
         self,
-        node: AgentNodeProfile,
-        ledger: EpistemicLedgerState,
+        node: LocalAgentNodeProfile,
+        ledger: LocalLedgerState,
         _node_id: str,
-        action_space: ActionSpaceManifest,
-    ) -> tuple[AnyIntent | AnyStateEvent | None, TokenBurnReceipt | None, LatentScratchpadReceipt | None, int, int]:
+        action_space: LocalActionSpace,
+    ) -> tuple[dict[str, Any] | None, dict[str, Any] | None, dict[str, Any] | None, int, int]:
         """
         Executes the System 1 Fast-Path. Restricts tools to `allowed_passive_tools`.
         If the model yields a valid ToolInvocationEvent within the subset, returns it immediately.
@@ -281,7 +283,7 @@ class InferenceEngine:
         allowed_tools = set(node.reflex_policy.allowed_passive_tools)
 
         # Filter action space native tools to only allowed passive tools
-        passive_tools = [t for t in action_space.native_tools if t.tool_name in allowed_tools]
+        passive_tools = [t for t in action_space.native_tools if t.get("tool_name") in allowed_tools]
         if not passive_tools:
             return None, None, None, 0, 0
 
@@ -301,7 +303,7 @@ class InferenceEngine:
         else:
             messages.insert(0, {"role": "system", "content": directive})
 
-        tools = self.adapter.project_tools([t.model_dump() for t in passive_tools])
+        tools = self.adapter.project_tools(passive_tools)
 
         total_input_tokens = 0
         total_output_tokens = 0
@@ -327,7 +329,7 @@ class InferenceEngine:
                 latent_firewalls=latent_firewalls,
                 format_contract=format_contract,
             )
-            halt_receipt: LatentScratchpadReceipt | None = None
+            halt_receipt: dict[str, Any] | None = None
             async for chunk, usage, receipt in stream:
                 if receipt:
                     halt_receipt = receipt  # pragma: no cover
@@ -357,9 +359,13 @@ class InferenceEngine:
             valid_intent = self._validate_intent(target_schema_key, clean_json_str.encode("utf-8", errors="replace"))
 
             # Fast-path only succeeds if it invokes an allowed passive tool
-            if isinstance(valid_intent, ToolInvocationEvent) and valid_intent.tool_name in allowed_tools:
-                invocation_cid = valid_intent.event_id
-                burn_receipt = TokenBurnReceipt(
+            if (
+                isinstance(valid_intent, dict)
+                and valid_intent.get("type") == "tool_invocation"
+                and valid_intent.get("tool_name") in allowed_tools
+            ):
+                invocation_cid = valid_intent.get("event_id")
+                burn_receipt = dict(
                     event_id=f"burn_{uuid.uuid4().hex[:8]}",
                     timestamp=time.time(),
                     tool_invocation_id=invocation_cid,
@@ -377,6 +383,8 @@ class InferenceEngine:
 
         except ValidationError as e:
             # If the fast path fails (e.g. invalid JSON or structural error), we fallback and log
+            from coreason_manifest.spec.ontology import LogEvent
+
             await self.telemetry.emit(
                 LogEvent(
                     timestamp=time.time(),
@@ -386,6 +394,8 @@ class InferenceEngine:
                 )
             )
         except Exception as e:
+            from coreason_manifest.spec.ontology import LogEvent
+
             await self.telemetry.emit(
                 LogEvent(
                     timestamp=time.time(),
@@ -397,28 +407,57 @@ class InferenceEngine:
 
         return None, None, None, total_input_tokens, total_output_tokens
 
-    def _apply_semantic_slicing(self, node: AgentNodeProfile, ledger: EpistemicLedgerState) -> list[dict[str, Any]]:
+    def _apply_semantic_slicing(self, node: LocalAgentNodeProfile, ledger: LocalLedgerState) -> list[dict[str, Any]]:
         """
         Applies semantic slicing policy to prevent context window overflow.
         Recursively evicts the oldest ObservationEvent payloads if token ceiling is exceeded.
         Caps historical System2RemediationIntent payloads to only the most recent one.
         """
         ceiling = None
-        if node.baseline_cognitive_state and node.baseline_cognitive_state.semantic_slicing:
-            ceiling = node.baseline_cognitive_state.semantic_slicing.context_window_token_ceiling
+        baseline = (
+            getattr(node, "baseline_cognitive_state", None)
+            if not isinstance(node, dict)
+            else node.get("baseline_cognitive_state")
+        )
+        if baseline:
+            slicing = (
+                getattr(baseline, "semantic_slicing", None)
+                if not isinstance(baseline, dict)
+                else baseline.get("semantic_slicing")
+            )
+            if slicing:
+                ceiling = (
+                    getattr(slicing, "context_window_token_ceiling", None)
+                    if not isinstance(slicing, dict)
+                    else slicing.get("context_window_token_ceiling")
+                )
 
-        history = list(ledger.history)
+        history = (
+            list(getattr(ledger, "history", [])) if not isinstance(ledger, dict) else list(ledger.get("history", []))
+        )
 
         # Destructive Eviction Prevention: cap System2RemediationIntent to the most recent one
-        remediation_indices = [i for i, event in enumerate(history) if isinstance(event, System2RemediationIntent)]
+        remediation_indices = [
+            i
+            for i, event in enumerate(history)
+            if isinstance(event, dict) and event.get("type") == "system2_remediation"
+        ]
         if len(remediation_indices) > 1:
             indices_to_remove = set(remediation_indices[:-1])
             history = [event for i, event in enumerate(history) if i not in indices_to_remove]
 
         # EpistemicLedgerState is frozen, so we must use model_copy(update={"history": history})
-        sliced_ledger = ledger.model_copy(update={"history": history})
+        sliced_ledger = (
+            dict(ledger)
+            if isinstance(ledger, dict)
+            else ledger.model_copy(update={"history": history})
+            if hasattr(ledger, "model_copy")
+            else dict(vars(ledger))
+        )
+        if isinstance(sliced_ledger, dict):
+            sliced_ledger["history"] = history
 
-        messages = self.hydrator.compile(node, sliced_ledger)
+        messages = self.hydrator.compile(node, sliced_ledger)  # type: ignore
 
         if not ceiling:
             return messages
@@ -428,17 +467,32 @@ class InferenceEngine:
 
         while token_mass > ceiling:
             # Find the oldest ObservationEvent to evict
-            obs_indices = [i for i, event in enumerate(sliced_ledger.history) if isinstance(event, ObservationEvent)]
+            obs_indices = [
+                i
+                for i, event in enumerate(
+                    getattr(sliced_ledger, "history", [])
+                    if not isinstance(sliced_ledger, dict)
+                    else sliced_ledger.get("history", [])
+                )
+                if isinstance(event, dict) and event.get("type") == "observation"
+            ]
             if not obs_indices:
                 break  # Cannot evict any more observations
 
             # Remove the oldest ObservationEvent
             oldest_obs_idx = obs_indices[0]
-            new_history = list(sliced_ledger.history)
+            new_history = (
+                list(getattr(sliced_ledger, "history", []))
+                if not isinstance(sliced_ledger, dict)
+                else list(sliced_ledger.get("history", []))
+            )
             new_history.pop(oldest_obs_idx)
-            sliced_ledger = sliced_ledger.model_copy(update={"history": new_history})
+            if isinstance(sliced_ledger, dict):
+                sliced_ledger["history"] = new_history
+            else:
+                sliced_ledger = sliced_ledger.model_copy(update={"history": new_history})
 
-            messages = self.hydrator.compile(node, sliced_ledger)
+            messages = self.hydrator.compile(node, sliced_ledger)  # type: ignore
             messages_str = json.dumps(messages)
             token_mass = self.adapter.count_tokens(messages_str)
 
@@ -446,15 +500,15 @@ class InferenceEngine:
 
     async def generate_intent(
         self,
-        node: AgentNodeProfile,
-        ledger: EpistemicLedgerState,
+        raw_node: dict[str, Any],
+        raw_ledger: dict[str, Any],
         node_id: str,
-        action_space: ActionSpaceManifest,
+        raw_action_space: dict[str, Any],
     ) -> tuple[
-        AnyIntent | AnyStateEvent | System2RemediationIntent,
-        TokenBurnReceipt,
-        LatentScratchpadReceipt | None,
-        CognitiveRewardEvaluationReceipt | None,
+        dict[str, Any],
+        dict[str, Any],
+        dict[str, Any] | None,
+        dict[str, Any] | None,
     ]:
         """
         Translates the passive ledger into active generation.
@@ -464,10 +518,16 @@ class InferenceEngine:
             InferenceConvergenceError: If max_loops are exceeded or upstream API fatally fails.
             asyncio.CancelledError: If preempted by the Orchestrator.
         """
+        node = LocalAgentNodeProfile(**raw_node)
+        ledger = LocalLedgerState(**raw_ledger)
+        action_space = LocalActionSpace(**raw_action_space)
+
         # CRITICAL FIX: Deadlock Prevention via Local Backpressure
         start_time_unix_nano = time.time_ns()
         if self._semaphore.locked():
             # Emit telemetry for starvation
+            from coreason_manifest.spec.ontology import LogEvent
+
             await self.telemetry.emit(
                 LogEvent(
                     timestamp=time.time(),
@@ -479,14 +539,20 @@ class InferenceEngine:
 
             # Import the correct event type
             # Yield a valid AnyStateEvent to prevent Pydantic validation crashes in the Ledger
-            from coreason_manifest.spec.ontology import SystemFaultEvent
+            from coreason_manifest.spec.ontology import (
+                SystemFaultEvent,
+                LogEvent,
+                ExecutionSpanReceipt,
+                SpanEvent,
+                ToolInvocationEvent,
+            )
 
-            error_intent = SystemFaultEvent(
+            error_intent = dict(
                 event_id=f"fault_{uuid.uuid4().hex[:8]}",
                 timestamp=time.time(),
                 type="system_fault",
             )
-            receipt = TokenBurnReceipt(
+            receipt = dict(
                 event_id=f"burn_{uuid.uuid4().hex[:8]}",
                 timestamp=time.time(),
                 tool_invocation_id="none",
@@ -534,14 +600,14 @@ class InferenceEngine:
             info_policy = getattr(node, "information_flow_policy", None)
             if info_policy and hasattr(info_policy, "tool_boundaries"):
                 allowed_boundaries = set(info_policy.tool_boundaries)
-                allowed_tools = [t for t in allowed_tools if t.tool_name in allowed_boundaries]
+                allowed_tools = [t for t in allowed_tools if t.get("tool_name") in allowed_boundaries]
 
             node_permissions = getattr(node, "permissions", None)
             if node_permissions and hasattr(node_permissions, "allowed_tools"):
                 allowed_set = set(node_permissions.allowed_tools)
-                allowed_tools = [t for t in allowed_tools if t.tool_name in allowed_set]
+                allowed_tools = [t for t in allowed_tools if t.get("tool_name") in allowed_set]
 
-            tools = self.adapter.project_tools([t.model_dump() for t in allowed_tools])
+            tools = self.adapter.project_tools(allowed_tools)
 
             max_loops = node.correction_policy.max_loops if node.correction_policy else 3
 
@@ -668,7 +734,8 @@ class InferenceEngine:
                                 await asyncio.shield(stream.aclose())
 
                             # Fast-return remediation intent
-                            remediation_intent = System2RemediationIntent(
+                            remediation_intent = dict(
+                                type="system2_remediation",
                                 fault_id=f"fault_{uuid.uuid4().hex[:8]}",
                                 target_node_id=node_id or "",
                                 failing_pointers=["/"],
@@ -677,7 +744,7 @@ class InferenceEngine:
                             )
 
                             invocation_cid = "none"
-                            burn_receipt = TokenBurnReceipt(
+                            burn_receipt = dict(
                                 event_id=f"burn_{uuid.uuid4().hex[:8]}",
                                 timestamp=time.time(),
                                 tool_invocation_id=invocation_cid,
@@ -726,7 +793,7 @@ class InferenceEngine:
                     # Optional: Fail-fast JSON stream parsing could happen inside the loop above
 
                     if halt_receipt:
-                        burn_receipt = TokenBurnReceipt(
+                        burn_receipt = dict(
                             event_id=f"burn_{uuid.uuid4().hex[:8]}",
                             timestamp=time.time(),
                             tool_invocation_id="none",
@@ -734,9 +801,7 @@ class InferenceEngine:
                             output_tokens=total_output_tokens,
                             burn_magnitude=self._calculate_cost(total_input_tokens, total_output_tokens),
                         )  # pragma: no cover
-                        valid_intent = FallbackIntent(
-                            target_node_id=node_id, fallback_node_id="system_halt"
-                        )  # pragma: no cover
+                        valid_intent = dict(target_node_id=node_id, fallback_node_id="system_halt")  # pragma: no cover
                         return valid_intent, burn_receipt, halt_receipt, None  # pragma: no cover
 
                     clean_json_str, scratchpad = self._extract_latent_traces(raw_output, node)
@@ -750,9 +815,9 @@ class InferenceEngine:
                     )
 
                     # FR-4.5: Hallucinated Tool Escalation
-                    if isinstance(valid_intent, ToolInvocationEvent):
-                        allowed_tools_names = {t.tool_name for t in action_space.native_tools}
-                        if valid_intent.tool_name not in allowed_tools_names:
+                    if isinstance(valid_intent, dict) and valid_intent.get("type") == "tool_invocation":
+                        allowed_tools_names = {t.get("tool_name") for t in action_space.native_tools}
+                        if valid_intent.get("tool_name") not in allowed_tools_names:
                             from pydantic import ValidationError as PydanticValidationError
 
                             raise PydanticValidationError.from_exception_data(
@@ -761,10 +826,10 @@ class InferenceEngine:
                                     {
                                         "type": "value_error",
                                         "loc": ("tool_name",),
-                                        "input": valid_intent.tool_name,
+                                        "input": valid_intent.get("tool_name"),
                                         "ctx": {
                                             "error": ValueError(
-                                                f"Tool '{valid_intent.tool_name}' not found in ActionSpaceManifest."
+                                                f"Tool '{valid_intent.get('tool_name')}' not found in ActionSpaceManifest."
                                             )
                                         },
                                     }
@@ -772,10 +837,27 @@ class InferenceEngine:
                             )
 
                     # Check for tool invocation ID
-                    invocation_cid = valid_intent.event_id if isinstance(valid_intent, ToolInvocationEvent) else "none"
+                    invocation_cid = (
+                        valid_intent.get("event_id", "none")
+                        if isinstance(valid_intent, dict) and valid_intent.get("type") == "tool_invocation"
+                        else "none"
+                    )
 
                     # Build tracking receipt
                     end_time_unix_nano = time.time_ns()
+
+                    from coreason_manifest.spec.ontology import (
+                        ExecutionSpanReceipt,
+                        SpanEvent,
+                        LogEvent,
+                        SystemFaultEvent,
+                    )
+                    from coreason_manifest.spec.ontology import (
+                        ExecutionSpanReceipt,
+                        SpanEvent,
+                        LogEvent,
+                        SystemFaultEvent,
+                    )
 
                     span = ExecutionSpanReceipt(
                         trace_id=f"trace_{uuid.uuid4().hex[:8]}",
@@ -795,7 +877,7 @@ class InferenceEngine:
                     )
                     await self.telemetry.emit(span)
 
-                    burn_receipt = TokenBurnReceipt(
+                    burn_receipt = dict(
                         event_id=f"burn_{uuid.uuid4().hex[:8]}",
                         timestamp=time.time(),
                         tool_invocation_id=invocation_cid or "none",
@@ -804,16 +886,16 @@ class InferenceEngine:
                         burn_magnitude=self._calculate_cost(total_input_tokens, total_output_tokens),
                     )
 
-                    cognitive_receipt = None
+                    cognitive_receipt: dict[str, Any] | None = None
                     if (
                         scratchpad
                         and node.grpo_reward_policy
                         and getattr(node.grpo_reward_policy, "topological_scoring", None)
                     ):
-                        cognitive_receipt = CognitiveRewardEvaluationReceipt(
+                        cognitive_receipt = dict(
                             event_id=f"reward_{uuid.uuid4().hex[:8]}",
                             timestamp=time.time(),
-                            source_generation_id=scratchpad.trace_id,
+                            source_generation_id=scratchpad.get("trace_id"),
                             extracted_axioms=[],
                             calculated_r_path=1.0,  # Proxy values since full topological execution is out of scope here
                             total_advantage_score=1.0,
@@ -839,6 +921,8 @@ class InferenceEngine:
                         raw_output, getattr(node, "information_flow_policy", None)
                     )
 
+                    from coreason_manifest.spec.ontology import LogEvent
+
                     await self.telemetry.emit(
                         LogEvent(
                             timestamp=time.time(),
@@ -851,6 +935,8 @@ class InferenceEngine:
                     # Inject prompt and retry
                     messages.append({"role": "assistant", "content": raw_output})
                     messages.append({"role": "user", "content": remediation.model_dump_json()})
+
+                    from coreason_manifest.spec.ontology import LogEvent
 
                     await self.telemetry.emit(
                         LogEvent(

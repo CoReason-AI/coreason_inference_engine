@@ -66,7 +66,10 @@ def test_null_policy_no_eviction() -> None:
     obs2 = ObservationEvent(event_id="obs2", timestamp=101.0, payload={"data": "b" * 100})
     ledger = EpistemicLedgerState(history=[obs1, obs2])
 
-    messages = engine._apply_semantic_slicing(node, ledger)
+    messages = engine._apply_semantic_slicing(
+        LocalAgentNodeProfile(**node.model_dump()) if hasattr(node, "model_dump") else LocalAgentNodeProfile(**node),
+        LocalLedgerState(**ledger.model_dump()) if hasattr(ledger, "model_dump") else LocalLedgerState(**ledger),
+    )
 
     # Should retain both observations in the output
     assert len(messages) == 3  # 1 system + 2 observations
@@ -97,7 +100,10 @@ def test_positive_mass_below_ceiling() -> None:
     obs2 = ObservationEvent(event_id="obs2", timestamp=101.0, payload={"data": "b" * 50})
     ledger = EpistemicLedgerState(history=[obs1, obs2])
 
-    messages = engine._apply_semantic_slicing(node, ledger)
+    messages = engine._apply_semantic_slicing(
+        LocalAgentNodeProfile(**node.model_dump()) if hasattr(node, "model_dump") else LocalAgentNodeProfile(**node),
+        LocalLedgerState(**ledger.model_dump()) if hasattr(ledger, "model_dump") else LocalLedgerState(**ledger),
+    )
 
     # The total JSON string len is definitely < 1000. No eviction should occur.
     assert len(messages) == 3
@@ -130,7 +136,10 @@ def test_boundary_edge_mass_above_ceiling_eviction() -> None:
     obs2 = ObservationEvent(event_id="obs2", timestamp=101.0, payload={"data": "Y" * 10})  # Small
     ledger = EpistemicLedgerState(history=[obs1, obs2])
 
-    messages = engine._apply_semantic_slicing(node, ledger)
+    messages = engine._apply_semantic_slicing(
+        LocalAgentNodeProfile(**node.model_dump()) if hasattr(node, "model_dump") else LocalAgentNodeProfile(**node),
+        LocalLedgerState(**ledger.model_dump()) if hasattr(ledger, "model_dump") else LocalLedgerState(**ledger),
+    )
 
     # Obs1 should be evicted because it makes the mass > 150
     # Obs2 should be retained
@@ -181,10 +190,36 @@ def test_destructive_eviction_prevention() -> None:
     # we bypass Pydantic validation by mutating `history` post-creation or avoiding the ledger.
     ledger = EpistemicLedgerState(history=[obs1])
     # Force injection for testing purposes
-    history_with_remediations = [rem1, obs1, rem2, rem3]
+    history_with_remediations = [
+        {
+            "type": "system2_remediation",
+            "fault_id": rem1.fault_id,
+            "target_node_id": rem1.target_node_id,
+            "failing_pointers": rem1.failing_pointers,
+            "remediation_prompt": rem1.remediation_prompt,
+        },
+        obs1,
+        {
+            "type": "system2_remediation",
+            "fault_id": rem2.fault_id,
+            "target_node_id": rem2.target_node_id,
+            "failing_pointers": rem2.failing_pointers,
+            "remediation_prompt": rem2.remediation_prompt,
+        },
+        {
+            "type": "system2_remediation",
+            "fault_id": rem3.fault_id,
+            "target_node_id": rem3.target_node_id,
+            "failing_pointers": rem3.failing_pointers,
+            "remediation_prompt": rem3.remediation_prompt,
+        },
+    ]
     ledger = ledger.model_copy(update={"history": history_with_remediations})
 
-    messages = engine._apply_semantic_slicing(node, ledger)
+    messages = engine._apply_semantic_slicing(
+        LocalAgentNodeProfile(**node.model_dump()) if hasattr(node, "model_dump") else LocalAgentNodeProfile(**node),
+        LocalLedgerState(**ledger.model_dump()) if hasattr(ledger, "model_dump") else LocalLedgerState(**ledger),
+    )
 
     content_combined = json.dumps(messages)
     # rem1 and rem2 should be removed. only rem3 should remain.
@@ -220,7 +255,10 @@ def test_eviction_exhaustion() -> None:
     obs1 = ObservationEvent(event_id="obs1", timestamp=100.0, payload={"data": "A"})
     ledger = EpistemicLedgerState(history=[obs1])
 
-    messages = engine._apply_semantic_slicing(node, ledger)
+    messages = engine._apply_semantic_slicing(
+        LocalAgentNodeProfile(**node.model_dump()) if hasattr(node, "model_dump") else LocalAgentNodeProfile(**node),
+        LocalLedgerState(**ledger.model_dump()) if hasattr(ledger, "model_dump") else LocalLedgerState(**ledger),
+    )
 
     # Obs1 should be evicted. But system prompt remains and mass is > 10.
     # The loop should break safely and return just the system prompt.

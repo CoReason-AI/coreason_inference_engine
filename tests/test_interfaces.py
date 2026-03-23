@@ -8,19 +8,8 @@
 
 from collections.abc import AsyncGenerator
 from typing import Any
-from unittest.mock import MagicMock
 
 import pytest
-from coreason_manifest.spec.ontology import (
-    ActionSpaceManifest,
-    AgentNodeProfile,
-    AnyIntent,
-    CognitiveRewardEvaluationReceipt,
-    EpistemicLedgerState,
-    LatentScratchpadReceipt,
-    PeftAdapterContract,
-    TokenBurnReceipt,
-)
 
 from coreason_inference_engine.interfaces import (
     InferenceConvergenceError,
@@ -41,17 +30,16 @@ class DummyInferenceEngine:
 
     async def generate_intent(
         self,
-        node: AgentNodeProfile,
-        ledger: EpistemicLedgerState,
+        node: dict[str, Any],
+        ledger: dict[str, Any],
         node_id: str,
-        action_space: ActionSpaceManifest,
-    ) -> tuple[AnyIntent, TokenBurnReceipt, LatentScratchpadReceipt | None, CognitiveRewardEvaluationReceipt | None]:
-        # Using typing.cast or similar is difficult because we have AnyIntent. We'll raise to prove invocation.
+        action_space: dict[str, Any],
+    ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any] | None, dict[str, Any] | None]:
         raise NotImplementedError("Dummy implementation")
 
 
 class DummyLLMAdapter:
-    rate_card: Any = None
+    rate_card: dict[str, Any] | None = None
     """A dummy implementation of the LLMAdapterProtocol for testing."""
 
     def count_tokens(self, text: str) -> int:
@@ -60,7 +48,7 @@ class DummyLLMAdapter:
     def project_tools(self, schemas: list[dict[str, Any]]) -> list[dict[str, Any]]:
         return schemas
 
-    async def apply_peft_adapters(self, adapters: list[PeftAdapterContract]) -> None:
+    async def apply_peft_adapters(self, adapters: list[dict[str, Any]]) -> None:
         pass
 
     async def generate_stream(
@@ -71,7 +59,7 @@ class DummyLLMAdapter:
         logit_biases: dict[int, float] | None = None,
         max_tokens: int | None = None,
         **_kwargs: Any,
-    ) -> AsyncGenerator[tuple[str, dict[str, int], LatentScratchpadReceipt | None]]:
+    ) -> AsyncGenerator[tuple[str, dict[str, int], dict[str, Any] | None]]:
         # Workaround unused args
         _ = messages
         _ = tools
@@ -86,9 +74,9 @@ async def test_inference_engine_protocol() -> None:
     """Verify that a class correctly implementing the protocol works as expected."""
     engine: InferenceEngineProtocol = DummyInferenceEngine()
 
-    node = MagicMock(spec=AgentNodeProfile)
-    ledger = MagicMock(spec=EpistemicLedgerState)
-    action_space = MagicMock(spec=ActionSpaceManifest)
+    node: dict[str, Any] = {}
+    ledger: dict[str, Any] = {}
+    action_space: dict[str, Any] = {}
 
     with pytest.raises(NotImplementedError, match="Dummy implementation"):
         await engine.generate_intent(

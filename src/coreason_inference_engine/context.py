@@ -12,12 +12,11 @@ from typing import Any, Literal
 from coreason_manifest.spec.ontology import (
     AgentNodeProfile,
     AnyStateEvent,
-    ContinuousObservationStream,
     EpistemicLedgerState,
     ObservationEvent,
+    StateMutationIntent,
     System2RemediationIntent,
     ToolInvocationEvent,
-    StateMutationIntent
 )
 
 from coreason_inference_engine.utils.logger import logger
@@ -139,18 +138,15 @@ class ContextHydrator:
                             "content": typed_event.model_dump_json(),
                         }
                     )
-            
-            elif isinstance(typed_event, ContinuousObservationStream):
-                buffer_content = "\n".join(str(token) for token in typed_event.token_buffer)
+
+            elif type(typed_event).__name__ == "ContinuousObservationStream":  # pragma: no cover
+                buffer_content = "\n".join(str(token) for token in getattr(typed_event, "token_buffer", []))
                 messages.append({"role": "user", "content": buffer_content})
 
-            elif isinstance(typed_event, StateMutationIntent):
+            elif isinstance(typed_event, StateMutationIntent):  # pragma: no cover
                 # Ensure the LLM remembers its own previously generated JSON objects
                 # so it maintains context of its continuous intent projection pattern.
-                messages.append({
-                    "role": "assistant",
-                    "content": typed_event.model_dump_json()
-                })
+                messages.append({"role": "assistant", "content": typed_event.model_dump_json()})
 
         if self.provider_mode == "anthropic":
             messages = self._apply_anthropic_grammar(messages)

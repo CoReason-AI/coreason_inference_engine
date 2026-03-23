@@ -10,7 +10,6 @@ import hashlib
 import hmac
 import json
 import random
-import re
 import time
 import uuid
 from typing import Any
@@ -154,7 +153,6 @@ class InferenceEngine(InferenceEngineProtocol):
             CognitiveStateProfile,
             DocumentLayoutManifest,
             System2RemediationIntent,
-            StateMutationIntent,
         )
 
         registry = {
@@ -191,8 +189,15 @@ class InferenceEngine(InferenceEngineProtocol):
     def _validate_intent(self, schema_key: str, payload: bytes) -> Any:
         if schema_key in ("intent", "symbolic_handoff", "AnyIntent"):
             import json
+
+            from coreason_manifest.spec.ontology import (
+                AnyIntent,
+                AnyStateEvent,
+                StateMutationIntent,
+                System2RemediationIntent,
+                ToolInvocationEvent,
+            )
             from pydantic import TypeAdapter, ValidationError
-            from coreason_manifest.spec.ontology import AnyIntent, AnyStateEvent, System2RemediationIntent, StateMutationIntent, ToolInvocationEvent
             
             try:
                 data = json.loads(payload.decode("utf-8"))
@@ -214,18 +219,8 @@ class InferenceEngine(InferenceEngineProtocol):
                         parameters=params,
                         # Provide explicit Nones/empty mocks for strict schema requirements
                         authorized_budget_magnitude=1,
-                        agent_attestation=AgentAttestationReceipt(**{
-                            "training_lineage_hash": "0" * 64,
-                            "developer_signature": "mock",
-                            "capability_merkle_root": "0" * 64,
-                            "credential_presentations": []
-                        }),
-                        zk_proof=ZeroKnowledgeReceipt(**{
-                            "proof_protocol": "zk-SNARK",
-                            "public_inputs_hash": "0" * 64,
-                            "verifier_key_id": "mock-key",
-                            "cryptographic_blob": "mock-blob"
-                        })
+                        agent_attestation=AgentAttestationReceipt(training_lineage_hash="0" * 64, developer_signature="mock", capability_merkle_root="0" * 64, credential_presentations=[]),
+                        zk_proof=ZeroKnowledgeReceipt(proof_protocol="zk-SNARK", public_inputs_hash="0" * 64, verifier_key_id="mock-key", cryptographic_blob="mock-blob")
                     )
                 # --------------------------------------------------------
 

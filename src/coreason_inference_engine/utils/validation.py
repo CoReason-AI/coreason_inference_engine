@@ -7,7 +7,7 @@
 # Commercial use beyond a 30-day trial requires a separate license.
 
 
-from coreason_manifest.spec.ontology import System2RemediationIntent, ManifestViolationReceipt
+from coreason_manifest.spec.ontology import ManifestViolationReceipt, System2RemediationIntent
 from pydantic import BaseModel, ValidationError
 
 

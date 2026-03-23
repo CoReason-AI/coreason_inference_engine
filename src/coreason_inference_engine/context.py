@@ -15,9 +15,9 @@ from coreason_manifest.spec.ontology import (
     ContinuousObservationStream,
     EpistemicLedgerState,
     ObservationEvent,
+    StateMutationIntent,
     System2RemediationIntent,
     ToolInvocationEvent,
-    StateMutationIntent
 )
 
 from coreason_inference_engine.utils.logger import logger

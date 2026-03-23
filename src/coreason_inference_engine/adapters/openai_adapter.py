@@ -172,17 +172,17 @@ class OpenAIAdapter(BaseHttpAdapter):
                                 d = choice["delta"]
                                 
                                 # Extract standard text content
-                                if "content" in d and d["content"]:
+                                if d.get("content"):
                                     delta = d["content"]
                                 
                                 # Extract and accumulate native tool calls
-                                if "tool_calls" in d and d["tool_calls"]:
+                                if d.get("tool_calls"):
                                     for tc in d["tool_calls"]:
                                         if "function" in tc:
                                             func = tc["function"]
-                                            if "name" in func and func["name"]:
+                                            if func.get("name"):
                                                 tool_name += func["name"]
-                                            if "arguments" in func and func["arguments"]:
+                                            if func.get("arguments"):
                                                 tool_args_str += func["arguments"]
 
                         if data.get("usage"):

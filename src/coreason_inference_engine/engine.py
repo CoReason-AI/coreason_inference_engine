@@ -245,7 +245,7 @@ class InferenceEngine:
                         clean_data["from_path"] = data["from_path"]
                     return StateMutationIntent.model_construct(**clean_data)
 
-            except (json.JSONDecodeError, ValidationError, UnicodeDecodeError, TypeError):
+            except json.JSONDecodeError, ValidationError, UnicodeDecodeError, TypeError:
                 pass
 
             target_union = AnyIntent | AnyStateEvent | System2RemediationIntent
@@ -653,7 +653,7 @@ class InferenceEngine:
                                 events.clear()  # pragma: no cover
                             except StopIteration:  # pragma: no cover
                                 break
-                            except (ijson.JSONError, UnicodeEncodeError):  # pragma: no cover
+                            except ijson.JSONError, UnicodeEncodeError:  # pragma: no cover
                                 # We ignore standard parse errors during streaming since it's incomplete
                                 events.clear()
 

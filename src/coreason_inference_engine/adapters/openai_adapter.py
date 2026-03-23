@@ -54,7 +54,7 @@ class OpenAIAdapter(BaseHttpAdapter):
             if "type" in schema and schema["type"] == "function" and "function" in schema:
                 # Already in OpenAI format
                 openai_tools.append(schema)
-            elif "name" in schema and ("parameters" in schema or "input_schema" in schema):
+            elif ("name" in schema or "tool_name" in schema) and ("parameters" in schema or "input_schema" in schema):
                 # We need to wrap it
                 parameters = schema.get("parameters") or schema.get(
                     "input_schema", {"type": "object", "properties": {}}
@@ -63,7 +63,7 @@ class OpenAIAdapter(BaseHttpAdapter):
                     {
                         "type": "function",
                         "function": {
-                            "name": schema.get("name", "unknown_tool"),
+                            "name": schema.get("name") or schema.get("tool_name", "unknown_tool"),
                             "description": schema.get("description", ""),
                             "parameters": parameters,
                         },
@@ -71,11 +71,12 @@ class OpenAIAdapter(BaseHttpAdapter):
                 )
             else:
                 # Fallback, wrap the whole schema in parameters if not recognizable, or try to extract
+                name = schema.get("name") or schema.get("tool_name", "unknown_tool")
                 openai_tools.append(
                     {
                         "type": "function",
                         "function": {
-                            "name": schema.get("name", "unknown_tool"),
+                            "name": name,
                             "description": schema.get("description", ""),
                             "parameters": schema.get("parameters", {"type": "object", "properties": {}}),
                         },
@@ -143,7 +144,11 @@ class OpenAIAdapter(BaseHttpAdapter):
         payload: dict[str, Any],
         headers: dict[str, str],
     ) -> AsyncGenerator[tuple[str, dict[str, int], LatentScratchpadReceipt | None]]:
-        # OpenAI headers are fairly standard, passed from BaseHttpAdapter
+        
+        # Accumulators for native tool calls
+        tool_name = ""
+        tool_args_str = ""
+        
         async with self.client.stream("POST", self.api_url, json=payload, headers=headers) as response:
             response.raise_for_status()
 
@@ -163,10 +168,22 @@ class OpenAIAdapter(BaseHttpAdapter):
 
                         if "choices" in data and len(data["choices"]) > 0:
                             choice = data["choices"][0]
-                            if "delta" in choice and "content" in choice["delta"]:
-                                content = choice["delta"]["content"]
-                                if content:
-                                    delta = content
+                            if "delta" in choice:
+                                d = choice["delta"]
+                                
+                                # Extract standard text content
+                                if "content" in d and d["content"]:
+                                    delta = d["content"]
+                                
+                                # Extract and accumulate native tool calls
+                                if "tool_calls" in d and d["tool_calls"]:
+                                    for tc in d["tool_calls"]:
+                                        if "function" in tc:
+                                            func = tc["function"]
+                                            if "name" in func and func["name"]:
+                                                tool_name += func["name"]
+                                            if "arguments" in func and func["arguments"]:
+                                                tool_args_str += func["arguments"]
 
                         if data.get("usage"):
                             usage = {
@@ -176,5 +193,25 @@ class OpenAIAdapter(BaseHttpAdapter):
 
                         if delta or usage:
                             yield delta, usage, None
+                            
                     except json.JSONDecodeError:
                         pass
+        
+        # After the stream completes, check if a tool was called natively.
+        # If so, project it back as a strictly valid CoReason JSON ontology event.
+        if tool_name:
+            import time
+            import uuid
+            try:
+                args = json.loads(tool_args_str) if tool_args_str else {}
+            except json.JSONDecodeError:
+                args = {}
+                
+            tool_json = {
+                "type": "tool_invocation",
+                "tool_name": tool_name,
+                "parameters": args,  # Properly mapped to 'parameters' to pass validation
+                "event_id": f"evt_{uuid.uuid4().hex[:8]}",
+                "timestamp": time.time()
+            }
+            yield json.dumps(tool_json), {}, None

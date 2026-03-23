@@ -234,9 +234,9 @@ async def test_ijson_early_termination(
 
     intent, _receipt, _, _ = await engine.generate_intent(
         raw_node=mock_node.model_dump() if hasattr(mock_node, "model_dump") else mock_node,
-        raw_ledger=mock_ledger.model_dump() if hasattr(mock_ledger, "model_dump") else mock_ledger,
+        raw_ledger=mock_ledger.model_dump() if hasattr(mock_ledger, 'model_dump') else mock_ledger.model_dump() if hasattr(mock_ledger, "model_dump") else mock_ledger,
         node_id="did:test:1",
-        raw_action_space=mock_action_space.model_dump()
+        raw_action_space=mock_action_space.model_dump() if hasattr(mock_action_space, 'model_dump') else mock_action_space.model_dump()
         if hasattr(mock_action_space, "model_dump")
         else mock_action_space,
     )
@@ -262,9 +262,9 @@ async def test_successful_generation(
 
     intent, receipt, _scratchpad, _ = await engine.generate_intent(
         raw_node=mock_node.model_dump() if hasattr(mock_node, "model_dump") else mock_node,
-        raw_ledger=mock_ledger.model_dump() if hasattr(mock_ledger, "model_dump") else mock_ledger,
+        raw_ledger=mock_ledger.model_dump() if hasattr(mock_ledger, 'model_dump') else mock_ledger.model_dump() if hasattr(mock_ledger, "model_dump") else mock_ledger,
         node_id="did:test:1",
-        raw_action_space=mock_action_space.model_dump()
+        raw_action_space=mock_action_space.model_dump() if hasattr(mock_action_space, 'model_dump') else mock_action_space.model_dump()
         if hasattr(mock_action_space, "model_dump")
         else mock_action_space,
     )
@@ -344,9 +344,9 @@ async def test_generate_intent_ttft_concurrency(
     tasks = [
         engine.generate_intent(
             raw_node=mock_node.model_dump() if hasattr(mock_node, "model_dump") else mock_node,
-            raw_ledger=mock_ledger.model_dump() if hasattr(mock_ledger, "model_dump") else mock_ledger,
+            raw_ledger=mock_ledger.model_dump() if hasattr(mock_ledger, 'model_dump') else mock_ledger.model_dump() if hasattr(mock_ledger, "model_dump") else mock_ledger,
             node_id=f"did:test:{i}",
-            raw_action_space=mock_action_space.model_dump()
+            raw_action_space=mock_action_space.model_dump() if hasattr(mock_action_space, 'model_dump') else mock_action_space.model_dump()
             if hasattr(mock_action_space, "model_dump")
             else mock_action_space,
         )
@@ -383,9 +383,9 @@ async def test_economic_dos_token_clamping(
 
     await engine.generate_intent(
         raw_node=mock_node.model_dump() if hasattr(mock_node, "model_dump") else mock_node,
-        raw_ledger=mock_ledger.model_dump() if hasattr(mock_ledger, "model_dump") else mock_ledger,
+        raw_ledger=mock_ledger.model_dump() if hasattr(mock_ledger, 'model_dump') else mock_ledger.model_dump() if hasattr(mock_ledger, "model_dump") else mock_ledger,
         node_id="did:test:1",
-        raw_action_space=mock_action_space.model_dump()
+        raw_action_space=mock_action_space.model_dump() if hasattr(mock_action_space, 'model_dump') else mock_action_space.model_dump()
         if hasattr(mock_action_space, "model_dump")
         else mock_action_space,
     )
@@ -411,15 +411,15 @@ async def test_remediation_loop_success(
 
     intent, receipt, _scratchpad, _ = await engine.generate_intent(
         raw_node=mock_node.model_dump() if hasattr(mock_node, "model_dump") else mock_node,
-        raw_ledger=mock_ledger.model_dump() if hasattr(mock_ledger, "model_dump") else mock_ledger,
+        raw_ledger=mock_ledger.model_dump() if hasattr(mock_ledger, 'model_dump') else mock_ledger.model_dump() if hasattr(mock_ledger, "model_dump") else mock_ledger,
         node_id="did:test:1",
-        raw_action_space=mock_action_space.model_dump()
+        raw_action_space=mock_action_space.model_dump() if hasattr(mock_action_space, 'model_dump') else mock_action_space.model_dump()
         if hasattr(mock_action_space, "model_dump")
         else mock_action_space,
     )
 
     assert intent and intent.get("type") == "informational"
-    assert getattr(intent, "message", None) == "fixed"
+    assert intent and intent.get('message') == "fixed"
     # 1st call: 10 in, 10 out. 2nd call: 10 in, 10 out. Total 20/20.
     assert receipt.get("input_tokens") == 20
     assert receipt.get("output_tokens") == 20
@@ -438,9 +438,9 @@ async def test_remediation_loop_failure(
 
     intent, _receipt, _, _ = await engine.generate_intent(
         raw_node=mock_node.model_dump() if hasattr(mock_node, "model_dump") else mock_node,
-        raw_ledger=mock_ledger.model_dump() if hasattr(mock_ledger, "model_dump") else mock_ledger,
+        raw_ledger=mock_ledger.model_dump() if hasattr(mock_ledger, 'model_dump') else mock_ledger.model_dump() if hasattr(mock_ledger, "model_dump") else mock_ledger,
         node_id="did:test:1",
-        raw_action_space=mock_action_space.model_dump()
+        raw_action_space=mock_action_space.model_dump() if hasattr(mock_action_space, 'model_dump') else mock_action_space.model_dump()
         if hasattr(mock_action_space, "model_dump")
         else mock_action_space,
     )
@@ -505,9 +505,9 @@ async def test_zero_leak_cancellation(
     with pytest.raises(asyncio.CancelledError):
         await engine.generate_intent(
             raw_node=mock_node.model_dump() if hasattr(mock_node, "model_dump") else mock_node,
-            raw_ledger=mock_ledger.model_dump() if hasattr(mock_ledger, "model_dump") else mock_ledger,
+            raw_ledger=mock_ledger.model_dump() if hasattr(mock_ledger, 'model_dump') else mock_ledger.model_dump() if hasattr(mock_ledger, "model_dump") else mock_ledger,
             node_id="did:test:1",
-            raw_action_space=mock_action_space.model_dump()
+            raw_action_space=mock_action_space.model_dump() if hasattr(mock_action_space, 'model_dump') else mock_action_space.model_dump()
             if hasattr(mock_action_space, "model_dump")
             else mock_action_space,
         )
@@ -538,9 +538,9 @@ async def test_peft_adapters_applied(
 
     await engine.generate_intent(
         raw_node=node_with_peft.model_dump() if hasattr(node_with_peft, "model_dump") else node_with_peft,
-        raw_ledger=mock_ledger.model_dump() if hasattr(mock_ledger, "model_dump") else mock_ledger,
+        raw_ledger=mock_ledger.model_dump() if hasattr(mock_ledger, 'model_dump') else mock_ledger.model_dump() if hasattr(mock_ledger, "model_dump") else mock_ledger,
         node_id="did:test:1",
-        raw_action_space=mock_action_space.model_dump()
+        raw_action_space=mock_action_space.model_dump() if hasattr(mock_action_space, 'model_dump') else mock_action_space.model_dump()
         if hasattr(mock_action_space, "model_dump")
         else mock_action_space,
     )
@@ -588,9 +588,9 @@ async def test_extract_latent_traces_with_tags(
 
     intent, _receipt, scratchpad, cognitive_receipt = await engine.generate_intent(
         raw_node=new_node.model_dump() if hasattr(new_node, "model_dump") else new_node,
-        raw_ledger=mock_ledger.model_dump() if hasattr(mock_ledger, "model_dump") else mock_ledger,
+        raw_ledger=mock_ledger.model_dump() if hasattr(mock_ledger, 'model_dump') else mock_ledger.model_dump() if hasattr(mock_ledger, "model_dump") else mock_ledger,
         node_id="did:test:1",
-        raw_action_space=mock_action_space.model_dump()
+        raw_action_space=mock_action_space.model_dump() if hasattr(mock_action_space, 'model_dump') else mock_action_space.model_dump()
         if hasattr(mock_action_space, "model_dump")
         else mock_action_space,
     )
@@ -605,7 +605,7 @@ async def test_extract_latent_traces_with_tags(
     import hashlib
 
     expected_hash = hashlib.sha256(b"This is a reasoning trace.").hexdigest()
-    assert branch.latent_content_hash == expected_hash
+    assert branch.get('latent_content_hash') == expected_hash
 
 
 @pytest.mark.asyncio
@@ -620,10 +620,10 @@ async def test_extract_latent_traces_missing_tags_but_required(
     engine = InferenceEngine(adapter)
 
     intent, _receipt, scratchpad, _ = await engine.generate_intent(
-        raw_node=mock_node.model_dump() if hasattr(mock_node, "model_dump") else mock_node_with_think,
-        raw_ledger=mock_ledger.model_dump() if hasattr(mock_ledger, "model_dump") else mock_ledger,
+        raw_node=mock_node_with_think.model_dump() if hasattr(mock_node_with_think, "model_dump") else mock_node_with_think,
+        raw_ledger=mock_ledger.model_dump() if hasattr(mock_ledger, 'model_dump') else mock_ledger.model_dump() if hasattr(mock_ledger, "model_dump") else mock_ledger,
         node_id="did:test:1",
-        raw_action_space=mock_action_space.model_dump()
+        raw_action_space=mock_action_space.model_dump() if hasattr(mock_action_space, 'model_dump') else mock_action_space.model_dump()
         if hasattr(mock_action_space, "model_dump")
         else mock_action_space,
     )
@@ -650,9 +650,9 @@ async def test_extract_latent_traces_no_tags_required(
 
     intent, _receipt, scratchpad, _ = await engine.generate_intent(
         raw_node=mock_node.model_dump() if hasattr(mock_node, "model_dump") else mock_node,
-        raw_ledger=mock_ledger.model_dump() if hasattr(mock_ledger, "model_dump") else mock_ledger,
+        raw_ledger=mock_ledger.model_dump() if hasattr(mock_ledger, 'model_dump') else mock_ledger.model_dump() if hasattr(mock_ledger, "model_dump") else mock_ledger,
         node_id="did:test:1",
-        raw_action_space=mock_action_space.model_dump()
+        raw_action_space=mock_action_space.model_dump() if hasattr(mock_action_space, 'model_dump') else mock_action_space.model_dump()
         if hasattr(mock_action_space, "model_dump")
         else mock_action_space,
     )
@@ -680,9 +680,9 @@ async def test_local_backpressure_fail_fast(
         # Since the semaphore is locked, generate_intent should fail-fast
         intent, receipt, scratchpad, _ = await engine.generate_intent(
             raw_node=mock_node.model_dump() if hasattr(mock_node, "model_dump") else mock_node,
-            raw_ledger=mock_ledger.model_dump() if hasattr(mock_ledger, "model_dump") else mock_ledger,
+            raw_ledger=mock_ledger.model_dump() if hasattr(mock_ledger, 'model_dump') else mock_ledger.model_dump() if hasattr(mock_ledger, "model_dump") else mock_ledger,
             node_id="did:test:1",
-            raw_action_space=mock_action_space.model_dump()
+            raw_action_space=mock_action_space.model_dump() if hasattr(mock_action_space, 'model_dump') else mock_action_space.model_dump()
             if hasattr(mock_action_space, "model_dump")
             else mock_action_space,
         )
@@ -712,9 +712,9 @@ async def test_severed_stream_token_fallback(
 
     intent, receipt, _scratchpad, _ = await engine.generate_intent(
         raw_node=mock_node.model_dump() if hasattr(mock_node, "model_dump") else mock_node,
-        raw_ledger=mock_ledger.model_dump() if hasattr(mock_ledger, "model_dump") else mock_ledger,
+        raw_ledger=mock_ledger.model_dump() if hasattr(mock_ledger, 'model_dump') else mock_ledger.model_dump() if hasattr(mock_ledger, "model_dump") else mock_ledger,
         node_id="did:test:1",
-        raw_action_space=mock_action_space.model_dump()
+        raw_action_space=mock_action_space.model_dump() if hasattr(mock_action_space, 'model_dump') else mock_action_space.model_dump()
         if hasattr(mock_action_space, "model_dump")
         else mock_action_space,
     )
@@ -722,7 +722,7 @@ async def test_severed_stream_token_fallback(
     # Safe decoding shouldn't explode and length of the safe output will be used
     safe_output = valid_intent_json.encode("utf-8", errors="replace").decode("utf-8")
     assert receipt.get("output_tokens") == adapter.count_tokens(safe_output)
-    assert receipt.get("input_tokens") > 0  # Input tokens counted from messages
+    assert receipt.get("input_tokens", 0) > 0  # Input tokens counted from messages
     assert intent and intent.get("type") == "informational"
 
 
@@ -774,7 +774,7 @@ def test_anyintent_adapter_includes_missing_intents() -> None:
     # Try cognitive_sync, which expects CognitiveStateProfile
     cognitive_sync_json = b'{"urgency_index": 0.5, "caution_index": 0.5, "divergence_tolerance": 0.1}'
     cog_intent = engine._validate_intent("cognitive_sync", cognitive_sync_json)
-    assert cog_intent.urgency_index == 0.5
+    assert cog_intent.get('urgency_index') == 0.5
 
 
 class HttpFaultAdapter(LLMAdapterProtocol):
@@ -833,9 +833,9 @@ async def test_transient_network_fault_backoff(
 
     intent, _receipt, _scratchpad, _ = await engine.generate_intent(
         raw_node=mock_node.model_dump() if hasattr(mock_node, "model_dump") else mock_node,
-        raw_ledger=mock_ledger.model_dump() if hasattr(mock_ledger, "model_dump") else mock_ledger,
+        raw_ledger=mock_ledger.model_dump() if hasattr(mock_ledger, 'model_dump') else mock_ledger.model_dump() if hasattr(mock_ledger, "model_dump") else mock_ledger,
         node_id="did:test:1",
-        raw_action_space=mock_action_space.model_dump()
+        raw_action_space=mock_action_space.model_dump() if hasattr(mock_action_space, 'model_dump') else mock_action_space.model_dump()
         if hasattr(mock_action_space, "model_dump")
         else mock_action_space,
     )
@@ -878,12 +878,12 @@ async def test_transient_network_fault_sla_exceeded(
 
     with pytest.raises(InferenceConvergenceError, match="SLA Contention: Required backoff delay"):
         await engine.generate_intent(
-            raw_node=node_with_small_timeout.model_dump()
+            raw_node=node_with_small_timeout.model_dump() if hasattr(node_with_small_timeout, 'model_dump') else node_with_small_timeout
             if hasattr(node_with_small_timeout, "model_dump")
             else node_with_small_timeout,
-            raw_ledger=mock_ledger.model_dump() if hasattr(mock_ledger, "model_dump") else mock_ledger,
+            raw_ledger=mock_ledger.model_dump() if hasattr(mock_ledger, 'model_dump') else mock_ledger.model_dump() if hasattr(mock_ledger, "model_dump") else mock_ledger,
             node_id="did:test:1",
-            raw_action_space=mock_action_space.model_dump()
+            raw_action_space=mock_action_space.model_dump() if hasattr(mock_action_space, 'model_dump') else mock_action_space.model_dump()
             if hasattr(mock_action_space, "model_dump")
             else mock_action_space,
         )
@@ -998,9 +998,9 @@ async def test_transient_network_fault_mid_stream(
 
     intent, _receipt, _scratchpad, _ = await engine.generate_intent(
         raw_node=mock_node.model_dump() if hasattr(mock_node, "model_dump") else mock_node,
-        raw_ledger=mock_ledger.model_dump() if hasattr(mock_ledger, "model_dump") else mock_ledger,
+        raw_ledger=mock_ledger.model_dump() if hasattr(mock_ledger, 'model_dump') else mock_ledger.model_dump() if hasattr(mock_ledger, "model_dump") else mock_ledger,
         node_id="did:test:1",
-        raw_action_space=mock_action_space.model_dump()
+        raw_action_space=mock_action_space.model_dump() if hasattr(mock_action_space, 'model_dump') else mock_action_space.model_dump()
         if hasattr(mock_action_space, "model_dump")
         else mock_action_space,
     )
@@ -1070,12 +1070,12 @@ async def test_transient_network_fault_mid_stream_sla_exceeded(
 
     with pytest.raises(InferenceConvergenceError, match="SLA Contention: Required backoff delay"):
         await engine.generate_intent(
-            raw_node=node_with_small_timeout.model_dump()
+            raw_node=node_with_small_timeout.model_dump() if hasattr(node_with_small_timeout, 'model_dump') else node_with_small_timeout
             if hasattr(node_with_small_timeout, "model_dump")
             else node_with_small_timeout,
-            raw_ledger=mock_ledger.model_dump() if hasattr(mock_ledger, "model_dump") else mock_ledger,
+            raw_ledger=mock_ledger.model_dump() if hasattr(mock_ledger, 'model_dump') else mock_ledger.model_dump() if hasattr(mock_ledger, "model_dump") else mock_ledger,
             node_id="did:test:1",
-            raw_action_space=mock_action_space.model_dump()
+            raw_action_space=mock_action_space.model_dump() if hasattr(mock_action_space, 'model_dump') else mock_action_space.model_dump()
             if hasattr(mock_action_space, "model_dump")
             else mock_action_space,
         )
@@ -1095,9 +1095,9 @@ async def test_transient_network_fault_unhandled_status_code(
     with pytest.raises(httpx.HTTPStatusError):
         await engine.generate_intent(
             raw_node=mock_node.model_dump() if hasattr(mock_node, "model_dump") else mock_node,
-            raw_ledger=mock_ledger.model_dump() if hasattr(mock_ledger, "model_dump") else mock_ledger,
+            raw_ledger=mock_ledger.model_dump() if hasattr(mock_ledger, 'model_dump') else mock_ledger.model_dump() if hasattr(mock_ledger, "model_dump") else mock_ledger,
             node_id="did:test:1",
-            raw_action_space=mock_action_space.model_dump()
+            raw_action_space=mock_action_space.model_dump() if hasattr(mock_action_space, 'model_dump') else mock_action_space.model_dump()
             if hasattr(mock_action_space, "model_dump")
             else mock_action_space,
         )
@@ -1151,7 +1151,7 @@ async def test_epistemic_tool_pruning() -> None:
         raw_node=node_with_boundaries.model_dump()
         if hasattr(node_with_boundaries, "model_dump")
         else node_with_boundaries,
-        ledger=EpistemicLedgerState(history=[]),
+        raw_ledger=EpistemicLedgerState(history=[]).model_dump(),
         node_id="did:test:1",
         raw_action_space=action_space.model_dump() if hasattr(action_space, "model_dump") else action_space,
     )

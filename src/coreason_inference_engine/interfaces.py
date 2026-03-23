@@ -9,39 +9,30 @@
 from collections.abc import AsyncGenerator
 from typing import Any, Protocol
 
-from coreason_manifest.spec.ontology import (
-    ActionSpaceManifest,
-    AgentNodeProfile,
-    AnyIntent,
-    AnyStateEvent,
-    CognitiveRewardEvaluationReceipt,
-    ComputeRateContract,
-    EpistemicLedgerState,
-    LatentScratchpadReceipt,
-    PeftAdapterContract,
-    System2RemediationIntent,
-    TokenBurnReceipt,
-)
-
 
 class InferenceConvergenceError(Exception):
     """Raised when the LLM fails to converge on a valid topological structure after max retries."""
 
 
 class InferenceEngineProtocol(Protocol):
-    """Protocol for the core inference engine."""
+    """
+    Protocol for the core inference engine.
+
+    The implementation of this protocol will be responsible for parsing the
+    `dict[str, Any]` payloads using its own internal local DTOs in a later phase.
+    """
 
     async def generate_intent(
         self,
-        node: AgentNodeProfile,
-        ledger: EpistemicLedgerState,
+        node: dict[str, Any],
+        ledger: dict[str, Any],
         node_id: str,
-        action_space: ActionSpaceManifest,
+        action_space: dict[str, Any],
     ) -> tuple[
-        AnyIntent | AnyStateEvent | System2RemediationIntent,
-        TokenBurnReceipt,
-        LatentScratchpadReceipt | None,
-        CognitiveRewardEvaluationReceipt | None,
+        dict[str, Any],
+        dict[str, Any],
+        dict[str, Any] | None,
+        dict[str, Any] | None,
     ]:
         """
         Translates the passive ledger into active generation.
@@ -55,8 +46,13 @@ class InferenceEngineProtocol(Protocol):
 
 
 class LLMAdapterProtocol(Protocol):
-    rate_card: ComputeRateContract | None
-    """Protocol for LLM provider adapters."""
+    rate_card: dict[str, Any] | None
+    """
+    Protocol for LLM provider adapters.
+
+    The implementation of this protocol will be responsible for parsing the
+    `dict[str, Any]` payloads using its own internal local DTOs in a later phase.
+    """
 
     def count_tokens(self, text: str) -> int:
         """Synchronously calculates the exact token mass of a string."""
@@ -66,7 +62,7 @@ class LLMAdapterProtocol(Protocol):
         """Translates JSON Schema dictionaries into the provider's native tool array format."""
         ...
 
-    async def apply_peft_adapters(self, adapters: list[PeftAdapterContract]) -> None:
+    async def apply_peft_adapters(self, adapters: list[dict[str, Any]]) -> None:
         """Hot-swaps declarative LoRA/PEFT weights into VRAM on compatible local backends."""
         ...
 
@@ -78,7 +74,7 @@ class LLMAdapterProtocol(Protocol):
         logit_biases: dict[int, float] | None = None,
         max_tokens: int | None = None,
         **kwargs: Any,
-    ) -> AsyncGenerator[tuple[str, dict[str, int], LatentScratchpadReceipt | None]]:
+    ) -> AsyncGenerator[tuple[str, dict[str, int], dict[str, Any] | None]]:
         """
         Yields chunked string deltas and an optional usage dictionary.
         The final yield MUST contain the {"input_tokens": x, "output_tokens": y} mapping.

@@ -105,6 +105,7 @@ class InferenceEngine(InferenceEngineProtocol):
 
         if not require_think_tags:
             import re
+
             clean_out = raw_output.strip()
             json_match = re.search(r"```(?:json)?\s*(.*?)\s*```", clean_out, re.DOTALL)
             if json_match:
@@ -163,7 +164,7 @@ class InferenceEngine(InferenceEngineProtocol):
         }
 
         if schema_key in ("intent", "state_differential", "symbolic_handoff", "AnyIntent"):
-            from coreason_manifest.spec.ontology import AnyIntent, AnyStateEvent, StateMutationIntent
+            from coreason_manifest.spec.ontology import AnyIntent, AnyStateEvent
             from pydantic import TypeAdapter
 
             target_union = AnyIntent | AnyStateEvent | System2RemediationIntent | StateMutationIntent
@@ -186,6 +187,7 @@ class InferenceEngine(InferenceEngineProtocol):
             return "symbolic_handoff"
 
         return "intent"
+
     def _validate_intent(self, schema_key: str, payload: bytes) -> Any:
         if schema_key in ("intent", "symbolic_handoff", "AnyIntent"):
             import json
@@ -198,10 +200,10 @@ class InferenceEngine(InferenceEngineProtocol):
                 ToolInvocationEvent,
             )
             from pydantic import TypeAdapter, ValidationError
-            
+
             try:
                 data = json.loads(payload.decode("utf-8"))
-                
+
                 # --- FINAL PATCH: model_construct bypass ---
                 if isinstance(data, dict) and data.get("type") == "tool_invocation":
                     params = data.get("parameters", {})
@@ -210,7 +212,7 @@ class InferenceEngine(InferenceEngineProtocol):
 
                     import time
                     import uuid
-                    
+
                     return ToolInvocationEvent.model_construct(
                         event_id=data.get("event_id", f"evt_{uuid.uuid4().hex[:8]}"),
                         timestamp=data.get("timestamp", time.time()),
@@ -219,21 +221,34 @@ class InferenceEngine(InferenceEngineProtocol):
                         parameters=params,
                         # Provide explicit Nones/empty mocks for strict schema requirements
                         authorized_budget_magnitude=1,
-                        agent_attestation=AgentAttestationReceipt(training_lineage_hash="0" * 64, developer_signature="mock", capability_merkle_root="0" * 64, credential_presentations=[]),
-                        zk_proof=ZeroKnowledgeReceipt(proof_protocol="zk-SNARK", public_inputs_hash="0" * 64, verifier_key_id="mock-key", cryptographic_blob="mock-blob")
+                        agent_attestation=AgentAttestationReceipt(
+                            training_lineage_hash="0" * 64,
+                            developer_signature="mock",
+                            capability_merkle_root="0" * 64,
+                            credential_presentations=[],
+                        ),
+                        zk_proof=ZeroKnowledgeReceipt(
+                            proof_protocol="zk-SNARK",
+                            public_inputs_hash="0" * 64,
+                            verifier_key_id="mock-key",
+                            cryptographic_blob="mock-blob",
+                        ),
                     )
                 # --------------------------------------------------------
 
                 if isinstance(data, dict) and "op" in data and "path" in data:
                     clean_data = {"op": data["op"], "path": data["path"]}
-                    if "value" in data: clean_data["value"] = data["value"]
-                    if "from" in data: clean_data["from"] = data["from"]
-                    if "from_path" in data: clean_data["from_path"] = data["from_path"]
+                    if "value" in data:
+                        clean_data["value"] = data["value"]
+                    if "from" in data:
+                        clean_data["from"] = data["from"]
+                    if "from_path" in data:
+                        clean_data["from_path"] = data["from_path"]
                     return StateMutationIntent.model_construct(**clean_data)
-                    
+
             except (json.JSONDecodeError, ValidationError, UnicodeDecodeError, TypeError):
                 pass
-                
+
             target_union = AnyIntent | AnyStateEvent | System2RemediationIntent
             return TypeAdapter(target_union).validate_json(payload)
 
@@ -629,7 +644,9 @@ class InferenceEngine(InferenceEngineProtocol):
                                         extract_props(schema_dict, allowed_keys)
 
                                         # Always allow base event keys
-                                        allowed_keys.update({"type", "intent_type", "target_node_id", "event_id", "timestamp"})
+                                        allowed_keys.update(
+                                            {"type", "intent_type", "target_node_id", "event_id", "timestamp"}
+                                        )
 
                                         if value not in allowed_keys:
                                             structural_violation = True
@@ -806,7 +823,11 @@ class InferenceEngine(InferenceEngineProtocol):
                     # CRITICAL: Pass exact DID string (node_id) to prevent remediation crash
                     remediation = generate_correction_prompt(error=e, target_node_id=node_id, fault_id=fault_id)
 
-                    print(f"\\n\\n=========== RAW LLM FALLBACK ===========\\n{raw_output}\\n========================================\\n\\n")
+                    print(
+                        f"\\n\\n=========== RAW LLM FALLBACK ===========\\n"
+                        f"{raw_output}\\n"
+                        f"========================================\\n\\n"
+                    )
 
                     # Redact raw output
                     redacted_output = self.telemetry.redact_pii(

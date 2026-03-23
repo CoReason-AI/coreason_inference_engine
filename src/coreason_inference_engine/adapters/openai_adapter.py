@@ -24,7 +24,9 @@ class OpenAIAdapter(BaseHttpAdapter):
     including capturing stream usage options.
     """
 
-    def __init__(self, api_url: str, api_key: str | None, model_name: str | None = None, max_connections: int = 1000) -> None:
+    def __init__(
+        self, api_url: str, api_key: str | None, model_name: str | None = None, max_connections: int = 1000
+    ) -> None:
         super().__init__(api_url, api_key or "", max_connections)
         self.model_name = model_name or "gpt-4o"
         self.rate_card = ComputeRateContract(
@@ -144,11 +146,10 @@ class OpenAIAdapter(BaseHttpAdapter):
         payload: dict[str, Any],
         headers: dict[str, str],
     ) -> AsyncGenerator[tuple[str, dict[str, int], LatentScratchpadReceipt | None]]:
-        
         # Accumulators for native tool calls
         tool_name = ""
         tool_args_str = ""
-        
+
         async with self.client.stream("POST", self.api_url, json=payload, headers=headers) as response:
             response.raise_for_status()
 
@@ -170,11 +171,11 @@ class OpenAIAdapter(BaseHttpAdapter):
                             choice = data["choices"][0]
                             if "delta" in choice:
                                 d = choice["delta"]
-                                
+
                                 # Extract standard text content
                                 if d.get("content"):
                                     delta = d["content"]
-                                
+
                                 # Extract and accumulate native tool calls
                                 if d.get("tool_calls"):
                                     for tc in d["tool_calls"]:
@@ -193,25 +194,26 @@ class OpenAIAdapter(BaseHttpAdapter):
 
                         if delta or usage:
                             yield delta, usage, None
-                            
+
                     except json.JSONDecodeError:
                         pass
-        
+
         # After the stream completes, check if a tool was called natively.
         # If so, project it back as a strictly valid CoReason JSON ontology event.
         if tool_name:
             import time
             import uuid
+
             try:
                 args = json.loads(tool_args_str) if tool_args_str else {}
             except json.JSONDecodeError:
                 args = {}
-                
+
             tool_json = {
                 "type": "tool_invocation",
                 "tool_name": tool_name,
                 "parameters": args,  # Properly mapped to 'parameters' to pass validation
                 "event_id": f"evt_{uuid.uuid4().hex[:8]}",
-                "timestamp": time.time()
+                "timestamp": time.time(),
             }
             yield json.dumps(tool_json), {}, None

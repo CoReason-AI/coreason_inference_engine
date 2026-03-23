@@ -25,17 +25,22 @@ def generate_correction_prompt(error: ValidationError, target_node_id: str, faul
     for err in error.errors():
         loc_path = "".join(f"/{item!s}" for item in err["loc"]) if err["loc"] else "/"
         err_type = str(err.get("type", "unknown"))
-        
+
         if err_type == "missing":
-            msg = "The required semantic boundary is completely missing. You must project this missing dimension to satisfy the StateContract."
+            msg = (
+                "The required semantic boundary is completely missing. "
+                "You must project this missing dimension to satisfy the StateContract."
+            )
         else:
             msg = str(err.get("msg", "Invalid structural payload."))
-            
-        violation_receipts.append(ManifestViolationReceipt(
-            failing_pointer=loc_path,
-            violation_type=err_type,
-            diagnostic_message=msg,
-        ))
+
+        violation_receipts.append(
+            ManifestViolationReceipt(
+                failing_pointer=loc_path,
+                violation_type=err_type,
+                diagnostic_message=msg,
+            )
+        )
 
     return System2RemediationIntent(
         fault_id=fault_id,

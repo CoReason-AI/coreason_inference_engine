@@ -139,7 +139,7 @@ class ContextHydrator:
                             "content": typed_event.model_dump_json(),
                         }
                     )
-            
+
             elif isinstance(typed_event, ContinuousObservationStream):
                 buffer_content = "\n".join(str(token) for token in typed_event.token_buffer)
                 messages.append({"role": "user", "content": buffer_content})
@@ -147,10 +147,7 @@ class ContextHydrator:
             elif isinstance(typed_event, StateMutationIntent):
                 # Ensure the LLM remembers its own previously generated JSON objects
                 # so it maintains context of its continuous intent projection pattern.
-                messages.append({
-                    "role": "assistant",
-                    "content": typed_event.model_dump_json()
-                })
+                messages.append({"role": "assistant", "content": typed_event.model_dump_json()})
 
         if self.provider_mode == "anthropic":
             messages = self._apply_anthropic_grammar(messages)

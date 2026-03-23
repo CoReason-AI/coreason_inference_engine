@@ -44,7 +44,7 @@ class ContextHydrator:
         messages: list[dict[str, Any]] = []
 
         # Anchor System Prompt
-        system_prompt = node.description
+        system_prompt = getattr(node, "description", "") if not isinstance(node, dict) else node.get("description", "")
 
         # AGENT INSTRUCTION: Dynamically translate CognitiveStateProfile mathematical constraints
         if node.baseline_cognitive_state:
@@ -62,15 +62,30 @@ class ContextHydrator:
         quarantined_event_ids: set[str] = set()
 
         # Extract defeasible cascades from the ledger
-        if ledger.active_cascades:
-            for cascade in ledger.active_cascades:
-                quarantined_event_ids.update(cascade.quarantined_event_ids)
+        active_cascades = (
+            getattr(ledger, "active_cascades", None) if not isinstance(ledger, dict) else ledger.get("active_cascades")
+        )
+        if active_cascades:
+            for cascade in active_cascades:
+                if isinstance(cascade, dict):
+                    quarantined_event_ids.update(cascade.get("quarantined_event_ids", []))
+                else:
+                    quarantined_event_ids.update(getattr(cascade, "quarantined_event_ids", []))
 
         # Extract active rollbacks from the ledger
-        if ledger.active_rollbacks:
-            for rollback in ledger.active_rollbacks:
-                if rollback.invalidated_node_ids:
-                    quarantined_event_ids.update(rollback.invalidated_node_ids)
+        active_rollbacks = (
+            getattr(ledger, "active_rollbacks", None)
+            if not isinstance(ledger, dict)
+            else ledger.get("active_rollbacks")
+        )
+        if active_rollbacks:
+            for rollback in active_rollbacks:
+                if isinstance(rollback, dict):
+                    invalid_ids = rollback.get("invalidated_node_ids", [])
+                else:
+                    invalid_ids = getattr(rollback, "invalidated_node_ids", [])
+                if invalid_ids:
+                    quarantined_event_ids.update(invalid_ids)
 
         # Iterate Chronologically and Map Roles
         for event in ledger.history:

@@ -12,7 +12,7 @@ from collections.abc import AsyncGenerator
 from typing import Any
 
 import tiktoken
-from coreason_manifest.spec.ontology import ComputeRateContract, LatentScratchpadReceipt, PeftAdapterContract
+from coreason_manifest.spec.ontology import ComputeRateContract
 
 from coreason_inference_engine.adapters.http_adapter import BaseHttpAdapter
 
@@ -86,7 +86,7 @@ class OpenAIAdapter(BaseHttpAdapter):
                 )
         return openai_tools
 
-    async def apply_peft_adapters(self, adapters: list[PeftAdapterContract]) -> None:
+    async def apply_peft_adapters(self, adapters: list[dict[str, Any]]) -> None:
         if not adapters:
             return
 
@@ -145,7 +145,7 @@ class OpenAIAdapter(BaseHttpAdapter):
         self,
         payload: dict[str, Any],
         headers: dict[str, str],
-    ) -> AsyncGenerator[tuple[str, dict[str, int], LatentScratchpadReceipt | None]]:
+    ) -> AsyncGenerator[tuple[str, dict[str, int], dict[str, Any] | None]]:
         # Accumulators for native tool calls
         tool_name = ""
         tool_args_str = ""

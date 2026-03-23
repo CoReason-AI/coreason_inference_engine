@@ -16,7 +16,6 @@ from coreason_manifest.spec.ontology import (
     CognitiveFormatContract,
     ComputeRateContract,
     LatentScratchpadReceipt,
-    PeftAdapterContract,
     SaeLatentPolicy,
     ThoughtBranchState,
 )
@@ -77,7 +76,7 @@ class LocalVLLMAdapter(LLMAdapterProtocol):
         """Translates JSON Schema dictionaries into the provider's native tool array format."""
         return schemas
 
-    async def apply_peft_adapters(self, adapters: list[PeftAdapterContract]) -> None:
+    async def apply_peft_adapters(self, adapters: list[dict[str, Any]]) -> None:
         """Hot-swaps declarative LoRA/PEFT weights into VRAM on compatible local backends."""
         if not adapters:
             return
@@ -214,7 +213,7 @@ class LocalVLLMAdapter(LLMAdapterProtocol):
         logit_biases: dict[int, float] | None = None,  # noqa: ARG002
         max_tokens: int | None = None,
         **kwargs: Any,
-    ) -> AsyncGenerator[tuple[str, dict[str, int], LatentScratchpadReceipt | None]]:
+    ) -> AsyncGenerator[tuple[str, dict[str, int], dict[str, Any] | None]]:
         """
         Yields chunked string deltas, an optional usage dictionary, and optionally a LatentScratchpadReceipt
         if generation halts due to a latent firewall violation.

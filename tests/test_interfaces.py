@@ -80,10 +80,10 @@ async def test_inference_engine_protocol() -> None:
 
     with pytest.raises(NotImplementedError, match="Dummy implementation"):
         await engine.generate_intent(
-            node=node,
-            ledger=ledger,
+            raw_raw_raw_node=node.model_dump() if hasattr(node, 'model_dump') else node.model_dump() if hasattr(node, "model_dump") else node,
+            raw_raw_ledger=ledger.model_dump() if hasattr(ledger, 'model_dump') else ledger.model_dump() if hasattr(ledger, "model_dump") else ledger,
             node_id="did:example:123",
-            action_space=action_space,
+            raw_raw_action_space=action_space.model_dump() if hasattr(action_space, 'model_dump') else action_space.model_dump() if hasattr(action_space, "model_dump") else action_space,
         )
 
 

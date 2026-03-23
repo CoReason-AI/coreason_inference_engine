@@ -119,7 +119,6 @@ def mock_validate_payload() -> Any:
             CognitiveStateProfile,
             DocumentLayoutManifest,
             StateMutationIntent,
-            System2RemediationIntent,
         )
         from pydantic import TypeAdapter
 
@@ -142,7 +141,6 @@ def mock_validate_payload() -> Any:
 
     with (
         patch("coreason_manifest.utils.algebra.validate_payload", side_effect=_mocked_validate),
-        patch("coreason_inference_engine.engine.validate_payload", side_effect=_mocked_validate),
     ):
         yield
 
@@ -235,10 +233,15 @@ async def test_ijson_early_termination(
     engine = InferenceEngine(adapter)
 
     intent, _receipt, _, _ = await engine.generate_intent(
-        node=mock_node, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
+        raw_node=mock_node.model_dump() if hasattr(mock_node, "model_dump") else mock_node,
+        raw_ledger=mock_ledger.model_dump() if hasattr(mock_ledger, 'model_dump') else mock_ledger.model_dump() if hasattr(mock_ledger, "model_dump") else mock_ledger,
+        node_id="did:test:1",
+        raw_action_space=mock_action_space.model_dump() if hasattr(mock_action_space, 'model_dump') else mock_action_space.model_dump()
+        if hasattr(mock_action_space, "model_dump")
+        else mock_action_space,
     )
-    assert isinstance(intent, System2RemediationIntent)
-    assert "CRITICAL CONTRACT BREACH" in intent.remediation_prompt
+    assert isinstance(intent, dict) and intent.get("type") == "system2_remediation"
+    assert "CRITICAL CONTRACT BREACH" in intent.get("remediation_prompt")
     # It should have called aclose on the stream
     assert getattr(adapter, "aclose_called", False)
 
@@ -258,14 +261,19 @@ async def test_successful_generation(
     engine = InferenceEngine(adapter)
 
     intent, receipt, _scratchpad, _ = await engine.generate_intent(
-        node=mock_node, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
+        raw_node=mock_node.model_dump() if hasattr(mock_node, "model_dump") else mock_node,
+        raw_ledger=mock_ledger.model_dump() if hasattr(mock_ledger, 'model_dump') else mock_ledger.model_dump() if hasattr(mock_ledger, "model_dump") else mock_ledger,
+        node_id="did:test:1",
+        raw_action_space=mock_action_space.model_dump() if hasattr(mock_action_space, 'model_dump') else mock_action_space.model_dump()
+        if hasattr(mock_action_space, "model_dump")
+        else mock_action_space,
     )
 
-    assert getattr(intent, "type", None) == "informational"
+    assert intent and intent.get("type") == "informational"
     # Receipt accumulation test
-    assert receipt.input_tokens == 10
-    assert receipt.output_tokens == 10
-    assert receipt.burn_magnitude == 20
+    assert receipt.get("input_tokens") == 10
+    assert receipt.get("output_tokens") == 10
+    assert receipt.get("burn_magnitude") == 20
     assert adapter.tools_projected is True
 
 
@@ -335,7 +343,12 @@ async def test_generate_intent_ttft_concurrency(
     # Fan out 10 concurrent requests
     tasks = [
         engine.generate_intent(
-            node=mock_node, ledger=mock_ledger, node_id=f"did:test:{i}", action_space=mock_action_space
+            raw_node=mock_node.model_dump() if hasattr(mock_node, "model_dump") else mock_node,
+            raw_ledger=mock_ledger.model_dump() if hasattr(mock_ledger, 'model_dump') else mock_ledger.model_dump() if hasattr(mock_ledger, "model_dump") else mock_ledger,
+            node_id=f"did:test:{i}",
+            raw_action_space=mock_action_space.model_dump() if hasattr(mock_action_space, 'model_dump') else mock_action_space.model_dump()
+            if hasattr(mock_action_space, "model_dump")
+            else mock_action_space,
         )
         for i in range(10)
     ]
@@ -369,7 +382,12 @@ async def test_economic_dos_token_clamping(
     engine = InferenceEngine(adapter)
 
     await engine.generate_intent(
-        node=mock_node, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
+        raw_node=mock_node.model_dump() if hasattr(mock_node, "model_dump") else mock_node,
+        raw_ledger=mock_ledger.model_dump() if hasattr(mock_ledger, 'model_dump') else mock_ledger.model_dump() if hasattr(mock_ledger, "model_dump") else mock_ledger,
+        node_id="did:test:1",
+        raw_action_space=mock_action_space.model_dump() if hasattr(mock_action_space, 'model_dump') else mock_action_space.model_dump()
+        if hasattr(mock_action_space, "model_dump")
+        else mock_action_space,
     )
 
     assert len(adapter.max_tokens_received) == 2
@@ -392,15 +410,20 @@ async def test_remediation_loop_success(
     engine = InferenceEngine(adapter)
 
     intent, receipt, _scratchpad, _ = await engine.generate_intent(
-        node=mock_node, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
+        raw_node=mock_node.model_dump() if hasattr(mock_node, "model_dump") else mock_node,
+        raw_ledger=mock_ledger.model_dump() if hasattr(mock_ledger, 'model_dump') else mock_ledger.model_dump() if hasattr(mock_ledger, "model_dump") else mock_ledger,
+        node_id="did:test:1",
+        raw_action_space=mock_action_space.model_dump() if hasattr(mock_action_space, 'model_dump') else mock_action_space.model_dump()
+        if hasattr(mock_action_space, "model_dump")
+        else mock_action_space,
     )
 
-    assert getattr(intent, "type", None) == "informational"
-    assert getattr(intent, "message", None) == "fixed"
+    assert intent and intent.get("type") == "informational"
+    assert intent and intent.get('message') == "fixed"
     # 1st call: 10 in, 10 out. 2nd call: 10 in, 10 out. Total 20/20.
-    assert receipt.input_tokens == 20
-    assert receipt.output_tokens == 20
-    assert receipt.burn_magnitude == 40
+    assert receipt.get("input_tokens") == 20
+    assert receipt.get("output_tokens") == 20
+    assert receipt.get("burn_magnitude") == 40
 
 
 @pytest.mark.asyncio
@@ -414,10 +437,15 @@ async def test_remediation_loop_failure(
     engine = InferenceEngine(adapter)
 
     intent, _receipt, _, _ = await engine.generate_intent(
-        node=mock_node, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
+        raw_node=mock_node.model_dump() if hasattr(mock_node, "model_dump") else mock_node,
+        raw_ledger=mock_ledger.model_dump() if hasattr(mock_ledger, 'model_dump') else mock_ledger.model_dump() if hasattr(mock_ledger, "model_dump") else mock_ledger,
+        node_id="did:test:1",
+        raw_action_space=mock_action_space.model_dump() if hasattr(mock_action_space, 'model_dump') else mock_action_space.model_dump()
+        if hasattr(mock_action_space, "model_dump")
+        else mock_action_space,
     )
 
-    assert getattr(intent, "fault_id", None) is not None
+    assert intent and intent.get("fault_id") is not None
     assert adapter.call_count == 1
 
 
@@ -476,7 +504,12 @@ async def test_zero_leak_cancellation(
 
     with pytest.raises(asyncio.CancelledError):
         await engine.generate_intent(
-            node=mock_node, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
+            raw_node=mock_node.model_dump() if hasattr(mock_node, "model_dump") else mock_node,
+            raw_ledger=mock_ledger.model_dump() if hasattr(mock_ledger, 'model_dump') else mock_ledger.model_dump() if hasattr(mock_ledger, "model_dump") else mock_ledger,
+            node_id="did:test:1",
+            raw_action_space=mock_action_space.model_dump() if hasattr(mock_action_space, 'model_dump') else mock_action_space.model_dump()
+            if hasattr(mock_action_space, "model_dump")
+            else mock_action_space,
         )
 
     assert adapter.mock_generator.aclose_called is True
@@ -504,7 +537,12 @@ async def test_peft_adapters_applied(
     engine = InferenceEngine(adapter)
 
     await engine.generate_intent(
-        node=node_with_peft, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
+        raw_node=node_with_peft.model_dump() if hasattr(node_with_peft, "model_dump") else node_with_peft,
+        raw_ledger=mock_ledger.model_dump() if hasattr(mock_ledger, 'model_dump') else mock_ledger.model_dump() if hasattr(mock_ledger, "model_dump") else mock_ledger,
+        node_id="did:test:1",
+        raw_action_space=mock_action_space.model_dump() if hasattr(mock_action_space, 'model_dump') else mock_action_space.model_dump()
+        if hasattr(mock_action_space, "model_dump")
+        else mock_action_space,
     )
 
     assert adapter.applied_peft is True
@@ -549,20 +587,25 @@ async def test_extract_latent_traces_with_tags(
     new_node = mock_node_with_think.model_copy(update={"grpo_reward_policy": new_policy})
 
     intent, _receipt, scratchpad, cognitive_receipt = await engine.generate_intent(
-        node=new_node, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
+        raw_node=new_node.model_dump() if hasattr(new_node, "model_dump") else new_node,
+        raw_ledger=mock_ledger.model_dump() if hasattr(mock_ledger, 'model_dump') else mock_ledger.model_dump() if hasattr(mock_ledger, "model_dump") else mock_ledger,
+        node_id="did:test:1",
+        raw_action_space=mock_action_space.model_dump() if hasattr(mock_action_space, 'model_dump') else mock_action_space.model_dump()
+        if hasattr(mock_action_space, "model_dump")
+        else mock_action_space,
     )
 
     assert cognitive_receipt is not None
 
-    assert getattr(intent, "type", None) == "informational"
+    assert intent and intent.get("type") == "informational"
     assert scratchpad is not None
-    assert scratchpad.total_latent_tokens == len("This is a reasoning trace.")
-    assert len(scratchpad.explored_branches) == 1
-    branch = scratchpad.explored_branches[0]
+    assert scratchpad and scratchpad.get("total_latent_tokens") == len("This is a reasoning trace.")
+    assert scratchpad and len(scratchpad.get("explored_branches", [])) == 1
+    branch = scratchpad.get("explored_branches")[0]
     import hashlib
 
     expected_hash = hashlib.sha256(b"This is a reasoning trace.").hexdigest()
-    assert branch.latent_content_hash == expected_hash
+    assert branch.get('latent_content_hash') == expected_hash
 
 
 @pytest.mark.asyncio
@@ -577,10 +620,15 @@ async def test_extract_latent_traces_missing_tags_but_required(
     engine = InferenceEngine(adapter)
 
     intent, _receipt, scratchpad, _ = await engine.generate_intent(
-        node=mock_node_with_think, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
+        raw_node=mock_node_with_think.model_dump() if hasattr(mock_node_with_think, "model_dump") else mock_node_with_think,
+        raw_ledger=mock_ledger.model_dump() if hasattr(mock_ledger, 'model_dump') else mock_ledger.model_dump() if hasattr(mock_ledger, "model_dump") else mock_ledger,
+        node_id="did:test:1",
+        raw_action_space=mock_action_space.model_dump() if hasattr(mock_action_space, 'model_dump') else mock_action_space.model_dump()
+        if hasattr(mock_action_space, "model_dump")
+        else mock_action_space,
     )
 
-    assert getattr(intent, "type", None) == "informational"
+    assert intent and intent.get("type") == "informational"
     assert scratchpad is None
 
 
@@ -601,10 +649,15 @@ async def test_extract_latent_traces_no_tags_required(
     engine = InferenceEngine(adapter)
 
     intent, _receipt, scratchpad, _ = await engine.generate_intent(
-        node=mock_node, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
+        raw_node=mock_node.model_dump() if hasattr(mock_node, "model_dump") else mock_node,
+        raw_ledger=mock_ledger.model_dump() if hasattr(mock_ledger, 'model_dump') else mock_ledger.model_dump() if hasattr(mock_ledger, "model_dump") else mock_ledger,
+        node_id="did:test:1",
+        raw_action_space=mock_action_space.model_dump() if hasattr(mock_action_space, 'model_dump') else mock_action_space.model_dump()
+        if hasattr(mock_action_space, "model_dump")
+        else mock_action_space,
     )
 
-    assert getattr(intent, "type", None) == "informational"
+    assert intent and intent.get("type") == "informational"
     assert scratchpad is None
     # Ensure it went through remediation loop (used 2 responses)
     assert adapter.call_count == 2
@@ -626,16 +679,20 @@ async def test_local_backpressure_fail_fast(
     try:
         # Since the semaphore is locked, generate_intent should fail-fast
         intent, receipt, scratchpad, _ = await engine.generate_intent(
-            node=mock_node, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
+            raw_node=mock_node.model_dump() if hasattr(mock_node, "model_dump") else mock_node,
+            raw_ledger=mock_ledger.model_dump() if hasattr(mock_ledger, 'model_dump') else mock_ledger.model_dump() if hasattr(mock_ledger, "model_dump") else mock_ledger,
+            node_id="did:test:1",
+            raw_action_space=mock_action_space.model_dump() if hasattr(mock_action_space, 'model_dump') else mock_action_space.model_dump()
+            if hasattr(mock_action_space, "model_dump")
+            else mock_action_space,
         )
 
-        from coreason_manifest.spec.ontology import SystemFaultEvent
 
-        assert isinstance(intent, SystemFaultEvent)
-        assert intent.type == "system_fault"
-        assert receipt.input_tokens == 0
-        assert receipt.output_tokens == 0
-        assert receipt.burn_magnitude == 0
+        assert isinstance(intent, dict) and intent.get("type") == "system_fault"
+        assert intent.get("type") == "system_fault"
+        assert receipt.get("input_tokens") == 0
+        assert receipt.get("output_tokens") == 0
+        assert receipt.get("burn_magnitude") == 0
         assert scratchpad is None
     finally:
         # Release the semaphore
@@ -654,14 +711,19 @@ async def test_severed_stream_token_fallback(
     engine = InferenceEngine(adapter)
 
     intent, receipt, _scratchpad, _ = await engine.generate_intent(
-        node=mock_node, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
+        raw_node=mock_node.model_dump() if hasattr(mock_node, "model_dump") else mock_node,
+        raw_ledger=mock_ledger.model_dump() if hasattr(mock_ledger, 'model_dump') else mock_ledger.model_dump() if hasattr(mock_ledger, "model_dump") else mock_ledger,
+        node_id="did:test:1",
+        raw_action_space=mock_action_space.model_dump() if hasattr(mock_action_space, 'model_dump') else mock_action_space.model_dump()
+        if hasattr(mock_action_space, "model_dump")
+        else mock_action_space,
     )
 
     # Safe decoding shouldn't explode and length of the safe output will be used
     safe_output = valid_intent_json.encode("utf-8", errors="replace").decode("utf-8")
-    assert receipt.output_tokens == adapter.count_tokens(safe_output)
-    assert receipt.input_tokens > 0  # Input tokens counted from messages
-    assert getattr(intent, "type", None) == "informational"
+    assert receipt.get("output_tokens") == adapter.count_tokens(safe_output)
+    assert receipt.get("input_tokens", 0) > 0  # Input tokens counted from messages
+    assert intent and intent.get("type") == "informational"
 
 
 def test_anyintent_adapter_includes_missing_intents() -> None:
@@ -689,15 +751,15 @@ def test_anyintent_adapter_includes_missing_intents() -> None:
         }
     }"""
     tool_intent = engine._validate_intent("intent", tool_invocation_json)
-    assert tool_intent.type == "tool_invocation"
-    assert tool_intent.tool_name == "test_tool"
+    assert tool_intent.get("type") == "tool_invocation"
+    assert tool_intent.get("tool_name") == "test_tool"
 
     # StateMutationIntent
     state_mutation_json = b'{"op": "replace", "path": "/some/path", "value": "new_value"}'
     mutation_intent = engine._validate_intent("state_differential", state_mutation_json)
-    assert mutation_intent.op == "replace"
-    assert mutation_intent.path == "/some/path"
-    assert mutation_intent.value == "new_value"
+    assert mutation_intent.get("op") == "replace"
+    assert mutation_intent.get("path") == "/some/path"
+    assert mutation_intent.get("value") == "new_value"
 
     # System2RemediationIntent
     remediation_json = (
@@ -705,14 +767,14 @@ def test_anyintent_adapter_includes_missing_intents() -> None:
         b'"failing_pointers": ["/a"], "remediation_prompt": "fix it"}'
     )
     remed_intent = engine._validate_intent("intent", remediation_json)
-    assert remed_intent.fault_id == "fault_1"
-    assert remed_intent.remediation_prompt == "fix it"
+    assert remed_intent.get("fault_id") == "fault_1"
+    assert remed_intent.get("remediation_prompt") == "fix it"
 
     # Other schema key defaults to validate_payload
     # Try cognitive_sync, which expects CognitiveStateProfile
     cognitive_sync_json = b'{"urgency_index": 0.5, "caution_index": 0.5, "divergence_tolerance": 0.1}'
     cog_intent = engine._validate_intent("cognitive_sync", cognitive_sync_json)
-    assert cog_intent.urgency_index == 0.5
+    assert cog_intent.get('urgency_index') == 0.5
 
 
 class HttpFaultAdapter(LLMAdapterProtocol):
@@ -746,8 +808,8 @@ class HttpFaultAdapter(LLMAdapterProtocol):
         _ = temperature
         _ = logit_biases
         _ = max_tokens
-        status_code = self.status_codes[self.call_count]
-        response = self.responses[self.call_count]
+        status_code = self.status_codes[self.call_count] if self.call_count < len(self.status_codes) else 429
+        response = self.responses[self.call_count] if self.call_count < len(self.responses) else ""
         self.call_count += 1
 
         if status_code != 200:
@@ -770,10 +832,15 @@ async def test_transient_network_fault_backoff(
     engine = InferenceEngine(adapter)
 
     intent, _receipt, _scratchpad, _ = await engine.generate_intent(
-        node=mock_node, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
+        raw_node=mock_node.model_dump() if hasattr(mock_node, "model_dump") else mock_node,
+        raw_ledger=mock_ledger.model_dump() if hasattr(mock_ledger, 'model_dump') else mock_ledger.model_dump() if hasattr(mock_ledger, "model_dump") else mock_ledger,
+        node_id="did:test:1",
+        raw_action_space=mock_action_space.model_dump() if hasattr(mock_action_space, 'model_dump') else mock_action_space.model_dump()
+        if hasattr(mock_action_space, "model_dump")
+        else mock_action_space,
     )
 
-    assert getattr(intent, "type", None) == "informational"
+    assert intent and intent.get("type") == "informational"
     assert adapter.call_count == 2
 
 
@@ -783,7 +850,7 @@ async def test_transient_network_fault_sla_exceeded(
 ) -> None:
     # First call yields 429
     responses = [""]
-    status_codes = [429]
+    status_codes = [429, 429]
 
     adapter = HttpFaultAdapter(responses, status_codes)
     engine = InferenceEngine(adapter)
@@ -811,7 +878,14 @@ async def test_transient_network_fault_sla_exceeded(
 
     with pytest.raises(InferenceConvergenceError, match="SLA Contention: Required backoff delay"):
         await engine.generate_intent(
-            node=node_with_small_timeout, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
+            raw_node=node_with_small_timeout.model_dump() if hasattr(node_with_small_timeout, 'model_dump') else node_with_small_timeout
+            if hasattr(node_with_small_timeout, "model_dump")
+            else node_with_small_timeout,
+            raw_ledger=mock_ledger.model_dump() if hasattr(mock_ledger, 'model_dump') else mock_ledger.model_dump() if hasattr(mock_ledger, "model_dump") else mock_ledger,
+            node_id="did:test:1",
+            raw_action_space=mock_action_space.model_dump() if hasattr(mock_action_space, 'model_dump') else mock_action_space.model_dump()
+            if hasattr(mock_action_space, "model_dump")
+            else mock_action_space,
         )
 
 
@@ -846,8 +920,8 @@ class HttpFaultMidStreamAdapter(LLMAdapterProtocol):
         _ = temperature
         _ = logit_biases
         _ = max_tokens
-        status_code = self.status_codes[self.call_count]
-        response = self.responses[self.call_count]
+        status_code = self.status_codes[self.call_count] if self.call_count < len(self.status_codes) else 429
+        response = self.responses[self.call_count] if self.call_count < len(self.responses) else ""
         self.call_count += 1
 
         if status_code != 200:
@@ -923,10 +997,15 @@ async def test_transient_network_fault_mid_stream(
     engine = InferenceEngine(adapter)
 
     intent, _receipt, _scratchpad, _ = await engine.generate_intent(
-        node=mock_node, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
+        raw_node=mock_node.model_dump() if hasattr(mock_node, "model_dump") else mock_node,
+        raw_ledger=mock_ledger.model_dump() if hasattr(mock_ledger, 'model_dump') else mock_ledger.model_dump() if hasattr(mock_ledger, "model_dump") else mock_ledger,
+        node_id="did:test:1",
+        raw_action_space=mock_action_space.model_dump() if hasattr(mock_action_space, 'model_dump') else mock_action_space.model_dump()
+        if hasattr(mock_action_space, "model_dump")
+        else mock_action_space,
     )
 
-    assert getattr(intent, "type", None) == "informational"
+    assert intent and intent.get("type") == "informational"
     assert adapter.call_count == 2
 
 
@@ -991,7 +1070,14 @@ async def test_transient_network_fault_mid_stream_sla_exceeded(
 
     with pytest.raises(InferenceConvergenceError, match="SLA Contention: Required backoff delay"):
         await engine.generate_intent(
-            node=node_with_small_timeout, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
+            raw_node=node_with_small_timeout.model_dump() if hasattr(node_with_small_timeout, 'model_dump') else node_with_small_timeout
+            if hasattr(node_with_small_timeout, "model_dump")
+            else node_with_small_timeout,
+            raw_ledger=mock_ledger.model_dump() if hasattr(mock_ledger, 'model_dump') else mock_ledger.model_dump() if hasattr(mock_ledger, "model_dump") else mock_ledger,
+            node_id="did:test:1",
+            raw_action_space=mock_action_space.model_dump() if hasattr(mock_action_space, 'model_dump') else mock_action_space.model_dump()
+            if hasattr(mock_action_space, "model_dump")
+            else mock_action_space,
         )
 
 
@@ -1008,7 +1094,12 @@ async def test_transient_network_fault_unhandled_status_code(
 
     with pytest.raises(httpx.HTTPStatusError):
         await engine.generate_intent(
-            node=mock_node, ledger=mock_ledger, node_id="did:test:1", action_space=mock_action_space
+            raw_node=mock_node.model_dump() if hasattr(mock_node, "model_dump") else mock_node,
+            raw_ledger=mock_ledger.model_dump() if hasattr(mock_ledger, 'model_dump') else mock_ledger.model_dump() if hasattr(mock_ledger, "model_dump") else mock_ledger,
+            node_id="did:test:1",
+            raw_action_space=mock_action_space.model_dump() if hasattr(mock_action_space, 'model_dump') else mock_action_space.model_dump()
+            if hasattr(mock_action_space, "model_dump")
+            else mock_action_space,
         )
 
 
@@ -1057,10 +1148,12 @@ async def test_epistemic_tool_pruning() -> None:
     engine = InferenceEngine(adapter)
 
     await engine.generate_intent(
-        node=node_with_boundaries,
-        ledger=EpistemicLedgerState(history=[]),
+        raw_node=node_with_boundaries.model_dump()
+        if hasattr(node_with_boundaries, "model_dump")
+        else node_with_boundaries,
+        raw_ledger=EpistemicLedgerState(history=[]).model_dump(),
         node_id="did:test:1",
-        action_space=action_space,
+        raw_action_space=action_space.model_dump() if hasattr(action_space, "model_dump") else action_space,
     )
 
     assert adapter.tools_projected is True

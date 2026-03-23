@@ -11,7 +11,6 @@ from collections.abc import AsyncGenerator
 from typing import Any
 
 import httpx
-from coreason_manifest.spec.ontology import ComputeRateContract, LatentScratchpadReceipt, PeftAdapterContract
 
 from coreason_inference_engine.interfaces import LLMAdapterProtocol
 from coreason_inference_engine.utils.network import validate_url_for_ssrf
@@ -26,7 +25,7 @@ class BaseHttpAdapter(LLMAdapterProtocol):
     def __init__(self, api_url: str, api_key: str, max_connections: int = 1000) -> None:
         self.api_url = api_url
         self.api_key = api_key
-        self.rate_card: ComputeRateContract | None = None
+        self.rate_card: dict[str, Any] | None = None
         # Singleton Transport & SSRF Firewall: explicitly bounded limits
         limits = httpx.Limits(max_connections=max_connections, max_keepalive_connections=max_connections)
         self.client = httpx.AsyncClient(limits=limits, timeout=httpx.Timeout(60.0))
@@ -44,7 +43,7 @@ class BaseHttpAdapter(LLMAdapterProtocol):
         """Translates JSON Schema dictionaries into the provider's native tool array format."""
         return schemas
 
-    async def apply_peft_adapters(self, adapters: list[PeftAdapterContract]) -> None:
+    async def apply_peft_adapters(self, adapters: list[dict[str, Any]]) -> None:
         """Hot-swaps declarative LoRA/PEFT weights into VRAM on compatible local backends."""
         if not adapters:
             return
@@ -101,7 +100,7 @@ class BaseHttpAdapter(LLMAdapterProtocol):
         logit_biases: dict[int, float] | None = None,
         max_tokens: int | None = None,
         **kwargs: Any,
-    ) -> AsyncGenerator[tuple[str, dict[str, int], LatentScratchpadReceipt | None]]:
+    ) -> AsyncGenerator[tuple[str, dict[str, int], dict[str, Any] | None]]:
         """
         Yields chunked string deltas and an optional usage dictionary.
         The final yield MUST contain the {"input_tokens": x, "output_tokens": y} mapping.
@@ -125,7 +124,7 @@ class BaseHttpAdapter(LLMAdapterProtocol):
 
     async def _stream_response(
         self, payload: dict[str, Any], headers: dict[str, str]
-    ) -> AsyncGenerator[tuple[str, dict[str, int], LatentScratchpadReceipt | None]]:
+    ) -> AsyncGenerator[tuple[str, dict[str, int], dict[str, Any] | None]]:
         # We must use client.stream
         async with self.client.stream("POST", self.api_url, json=payload, headers=headers) as response:
             response.raise_for_status()

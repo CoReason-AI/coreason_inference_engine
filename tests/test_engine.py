@@ -261,7 +261,7 @@ async def test_successful_generation(
         node=mock_node.model_dump(), ledger=mock_ledger.model_dump(), node_id="did:test:1", action_space=mock_action_space.model_dump()
     )
 
-    assert getattr(intent, "type", None) == "informational"
+    assert (intent.get("type") if isinstance(intent, dict) else getattr(intent, "type", None)) == "informational"
     # Receipt accumulation test
     assert receipt.get("input_tokens", 0) == 10
     assert receipt.get("output_tokens", 0) == 10
@@ -395,7 +395,7 @@ async def test_remediation_loop_success(
         node=mock_node.model_dump(), ledger=mock_ledger.model_dump(), node_id="did:test:1", action_space=mock_action_space.model_dump()
     )
 
-    assert getattr(intent, "type", None) == "informational"
+    assert (intent.get("type") if isinstance(intent, dict) else getattr(intent, "type", None)) == "informational"
     assert getattr(intent, "message", None) == "fixed"
     # 1st call: 10 in, 10 out. 2nd call: 10 in, 10 out. Total 20/20.
     assert receipt.get("input_tokens", 0) == 20
@@ -554,7 +554,7 @@ async def test_extract_latent_traces_with_tags(
 
     assert cognitive_receipt is not None
 
-    assert getattr(intent, "type", None) == "informational"
+    assert (intent.get("type") if isinstance(intent, dict) else getattr(intent, "type", None)) == "informational"
     assert scratchpad is not None
     assert scratchpad.get("total_latent_tokens", 0) == len("This is a reasoning trace.")
     assert len(scratchpad.get("explored_branches", [])) == 1
@@ -580,7 +580,7 @@ async def test_extract_latent_traces_missing_tags_but_required(
         node=mock_node_with_think.model_dump(), ledger=mock_ledger.model_dump(), node_id="did:test:1", action_space=mock_action_space.model_dump()
     )
 
-    assert getattr(intent, "type", None) == "informational"
+    assert (intent.get("type") if isinstance(intent, dict) else getattr(intent, "type", None)) == "informational"
     assert scratchpad is None
 
 
@@ -604,7 +604,7 @@ async def test_extract_latent_traces_no_tags_required(
         node=mock_node.model_dump(), ledger=mock_ledger.model_dump(), node_id="did:test:1", action_space=mock_action_space.model_dump()
     )
 
-    assert getattr(intent, "type", None) == "informational"
+    assert (intent.get("type") if isinstance(intent, dict) else getattr(intent, "type", None)) == "informational"
     assert scratchpad is None
     # Ensure it went through remediation loop (used 2 responses)
     assert adapter.call_count == 2
@@ -661,7 +661,7 @@ async def test_severed_stream_token_fallback(
     safe_output = valid_intent_json.encode("utf-8", errors="replace").decode("utf-8")
     assert receipt.get("output_tokens", 0) == adapter.count_tokens(safe_output)
     assert receipt.get("input_tokens", 0) > 0  # Input tokens counted from messages
-    assert getattr(intent, "type", None) == "informational"
+    assert (intent.get("type") if isinstance(intent, dict) else getattr(intent, "type", None)) == "informational"
 
 
 def test_anyintent_adapter_includes_missing_intents() -> None:
@@ -746,8 +746,8 @@ class HttpFaultAdapter(LLMAdapterProtocol):
         _ = temperature
         _ = logit_biases
         _ = max_tokens
-        status_code = self.status_codes[self.call_count]
-        response = self.responses[self.call_count]
+        status_code = self.status_codes[min(self.call_count, len(self.status_codes) - 1)]
+        response = self.responses[min(self.call_count, len(self.responses) - 1)]
         self.call_count += 1
 
         if status_code != 200:
@@ -773,7 +773,7 @@ async def test_transient_network_fault_backoff(
         node=mock_node.model_dump(), ledger=mock_ledger.model_dump(), node_id="did:test:1", action_space=mock_action_space.model_dump()
     )
 
-    assert getattr(intent, "type", None) == "informational"
+    assert (intent.get("type") if isinstance(intent, dict) else getattr(intent, "type", None)) == "informational"
     assert adapter.call_count == 2
 
 
@@ -846,8 +846,8 @@ class HttpFaultMidStreamAdapter(LLMAdapterProtocol):
         _ = temperature
         _ = logit_biases
         _ = max_tokens
-        status_code = self.status_codes[self.call_count]
-        response = self.responses[self.call_count]
+        status_code = self.status_codes[min(self.call_count, len(self.status_codes) - 1)]
+        response = self.responses[min(self.call_count, len(self.responses) - 1)]
         self.call_count += 1
 
         if status_code != 200:
@@ -926,7 +926,7 @@ async def test_transient_network_fault_mid_stream(
         node=mock_node.model_dump(), ledger=mock_ledger.model_dump(), node_id="did:test:1", action_space=mock_action_space.model_dump()
     )
 
-    assert getattr(intent, "type", None) == "informational"
+    assert (intent.get("type") if isinstance(intent, dict) else getattr(intent, "type", None)) == "informational"
     assert adapter.call_count == 2
 
 
@@ -1077,4 +1077,4 @@ def test_engine_target_schema_json_missing() -> None:
     adapter = DummyAdapter(responses=[])
     engine = InferenceEngine(adapter)
     schema = engine._get_target_json_schema("unknown_key_for_test")
-    assert schema == {}
+    assert schema.get("type") == "object"

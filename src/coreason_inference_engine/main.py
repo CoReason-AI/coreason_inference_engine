@@ -107,6 +107,8 @@ class InferenceRPCServer:
 def setup_engine(api_key: str | None = None) -> InferenceEngine:
     """Initializes the InferenceEngine with the correct LLMAdapter."""
     provider = os.environ.get("COREASON_LLM_PROVIDER", "openai").lower()
+    max_tokens_env = os.environ.get("COREASON_LLM_MAX_TOKENS") or os.environ.get("LLM_MAX_TOKENS")
+    default_max_tokens = int(max_tokens_env) if max_tokens_env else None
 
     adapter: LLMAdapterProtocol
     if provider == "anthropic":
@@ -128,7 +130,7 @@ def setup_engine(api_key: str | None = None) -> InferenceEngine:
         )
 
     # Initialize and return the Inference Engine
-    return InferenceEngine(adapter=adapter)
+    return InferenceEngine(adapter=adapter, default_max_tokens=default_max_tokens)
 
 
 async def serve() -> None:

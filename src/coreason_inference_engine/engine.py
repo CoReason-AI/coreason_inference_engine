@@ -59,11 +59,13 @@ class InferenceEngine(InferenceEngineProtocol):
         hydrator: ContextHydrator | None = None,
         max_concurrent_tasks: int = 1000,
         telemetry: TelemetryEmitter | None = None,
+        default_max_tokens: int | None = None,
     ) -> None:
         self.adapter = adapter
         self.hydrator = hydrator or ContextHydrator()
         self._semaphore = asyncio.Semaphore(max_concurrent_tasks)
         self.telemetry = telemetry or TelemetryEmitter()
+        self.default_max_tokens = default_max_tokens
 
     def _compile_watermark_biases(
         self, contract: Any | None, vocab_size: int = 128000, prior_tokens: list[int] | None = None
@@ -569,7 +571,7 @@ class InferenceEngine(InferenceEngineProtocol):
                 usage_metrics = {"input_tokens": 0, "output_tokens": 0}
                 halt_receipt = None
 
-                current_max_tokens = 500 if attempt > 0 else None
+                current_max_tokens = self.default_max_tokens if attempt == 0 else (self.default_max_tokens or 500)
 
                 response_schema = None
                 domain_ext = getattr(node, "domain_extensions", None)

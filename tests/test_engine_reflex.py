@@ -7,7 +7,6 @@ from coreason_manifest.spec.ontology import (
     ActionSpaceManifest,
     AgentNodeProfile,
     EpistemicLedgerState,
-    LatentScratchpadReceipt,
     PeftAdapterContract,
     PermissionBoundaryPolicy,
     SideEffectProfile,
@@ -168,7 +167,10 @@ async def test_reflex_fast_path_success(
     engine = InferenceEngine(adapter)
 
     intent, receipt, _scratch, _ = await engine.generate_intent(
-        node=node.model_dump(), ledger=mock_ledger.model_dump(), node_id="did:test:1", action_space=mock_action_space.model_dump()
+        node=node.model_dump(),
+        ledger=mock_ledger.model_dump(),
+        node_id="did:test:1",
+        action_space=mock_action_space.model_dump(),
     )
 
     assert (intent.get("type") if isinstance(intent, dict) else getattr(intent, "type", None)) == "tool_invocation"
@@ -207,7 +209,10 @@ async def test_reflex_fast_path_fallback_invalid_intent(
     engine = InferenceEngine(adapter)
 
     intent, _receipt, _scratch, _ = await engine.generate_intent(
-        node=node.model_dump(), ledger=mock_ledger.model_dump(), node_id="did:test:1", action_space=mock_action_space.model_dump()
+        node=node.model_dump(),
+        ledger=mock_ledger.model_dump(),
+        node_id="did:test:1",
+        action_space=mock_action_space.model_dump(),
     )
 
     assert (intent.get("type") if isinstance(intent, dict) else getattr(intent, "type", None)) == "informational"
@@ -256,7 +261,10 @@ async def test_reflex_fast_path_fallback_unallowed_tool(
     engine = InferenceEngine(adapter)
 
     intent, _receipt, _scratch, _ = await engine.generate_intent(
-        node=node.model_dump(), ledger=mock_ledger.model_dump(), node_id="did:test:1", action_space=mock_action_space.model_dump()
+        node=node.model_dump(),
+        ledger=mock_ledger.model_dump(),
+        node_id="did:test:1",
+        action_space=mock_action_space.model_dump(),
     )
 
     assert (intent.get("type") if isinstance(intent, dict) else getattr(intent, "type", None)) == "informational"
@@ -283,7 +291,10 @@ async def test_reflex_fast_path_empty_passivetools(
     engine = InferenceEngine(adapter)
 
     intent, _receipt, _scratch, _ = await engine.generate_intent(
-        node=node.model_dump(), ledger=mock_ledger.model_dump(), node_id="did:test:1", action_space=mock_action_space.model_dump()
+        node=node.model_dump(),
+        ledger=mock_ledger.model_dump(),
+        node_id="did:test:1",
+        action_space=mock_action_space.model_dump(),
     )
 
     assert (intent.get("type") if isinstance(intent, dict) else getattr(intent, "type", None)) == "informational"
@@ -342,7 +353,10 @@ async def test_reflex_fast_path_missing_usage(
     engine = InferenceEngine(adapter)
 
     intent, receipt, _scratch, _ = await engine.generate_intent(
-        node=node.model_dump(), ledger=mock_ledger.model_dump(), node_id="did:test:1", action_space=mock_action_space.model_dump()
+        node=node.model_dump(),
+        ledger=mock_ledger.model_dump(),
+        node_id="did:test:1",
+        action_space=mock_action_space.model_dump(),
     )
     assert (intent.get("type") if isinstance(intent, dict) else getattr(intent, "type", None)) == "tool_invocation"
     assert (intent.get("type") if isinstance(intent, dict) else getattr(intent, "type", None)) == "tool_invocation"
@@ -382,7 +396,10 @@ async def test_reflex_fast_path_exception(
 
     with pytest.raises(InferenceConvergenceError):
         await engine.generate_intent(
-            node=node.model_dump(), ledger=mock_ledger.model_dump(), node_id="did:test:1", action_space=mock_action_space.model_dump()
+            node=node.model_dump(),
+            ledger=mock_ledger.model_dump(),
+            node_id="did:test:1",
+            action_space=mock_action_space.model_dump(),
         )
 
 
@@ -426,7 +443,10 @@ async def test_reflex_fast_path_system_message_exists(
     engine.hydrator = NoSystemHydrator()  # type: ignore
 
     intent, _receipt, _scratch, _ = await engine.generate_intent(
-        node=node.model_dump(), ledger=mock_ledger.model_dump(), node_id="did:test:1", action_space=mock_action_space.model_dump()
+        node=node.model_dump(),
+        ledger=mock_ledger.model_dump(),
+        node_id="did:test:1",
+        action_space=mock_action_space.model_dump(),
     )
     assert (intent.get("type") if isinstance(intent, dict) else getattr(intent, "type", None)) == "tool_invocation"
 
@@ -452,7 +472,10 @@ async def test_reflex_fast_path_validation_error(
     engine = InferenceEngine(adapter)
 
     intent, _receipt, _scratch, _ = await engine.generate_intent(
-        node=node.model_dump(), ledger=mock_ledger.model_dump(), node_id="did:test:1", action_space=mock_action_space.model_dump()
+        node=node.model_dump(),
+        ledger=mock_ledger.model_dump(),
+        node_id="did:test:1",
+        action_space=mock_action_space.model_dump(),
     )
     assert (intent.get("type") if isinstance(intent, dict) else getattr(intent, "type", None)) == "informational"
     assert adapter.call_count == 2

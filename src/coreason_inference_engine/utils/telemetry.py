@@ -9,10 +9,9 @@
 import asyncio
 import contextlib
 import re
+from typing import Any
 
 from coreason_manifest.spec.ontology import ExecutionSpanReceipt, InformationFlowPolicy, LogEvent
-
-from typing import Any
 
 type TelemetryEvent = ExecutionSpanReceipt | LogEvent | dict[str, Any]
 

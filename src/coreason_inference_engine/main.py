@@ -63,10 +63,10 @@ class InferenceRPCServer:
                 )
 
                 return {
-                    "intent": intent if intent else None,
-                    "receipt": receipt if receipt else None,
-                    "scratchpad": scratchpad if scratchpad else None,
-                    "cognitive_receipt": cognitive_receipt if cognitive_receipt else None,
+                    "intent": intent or None,
+                    "receipt": receipt or None,
+                    "scratchpad": scratchpad or None,
+                    "cognitive_receipt": cognitive_receipt or None,
                 }
             except HTTPException:
                 raise

@@ -103,6 +103,7 @@ class LocalLedgerState(BaseModel):
 
     history: list[dict[str, Any]] = Field(default_factory=list)
 
+
 class LocalStateMutationIntent(BaseModel):
     model_config = ConfigDict(extra="allow")
     type: str = "state_mutation"
@@ -112,9 +113,11 @@ class LocalStateMutationIntent(BaseModel):
     from_: str | None = Field(None, alias="from")
     from_path: str | None = None
 
+
 class LocalCognitiveStateProfileSchema(BaseModel):
     model_config = ConfigDict(extra="allow")
     type: str = "cognitive_sync"
+
 
 class LocalSystem2RemediationIntent(BaseModel):
     model_config = ConfigDict(extra="allow")
@@ -124,13 +127,16 @@ class LocalSystem2RemediationIntent(BaseModel):
     failing_pointers: list[str]
     remediation_prompt: str
 
+
 class LocalDocumentLayoutManifest(BaseModel):
     model_config = ConfigDict(extra="allow")
     type: str = "document_layout"
 
+
 class LocalAnyIntent(BaseModel):
     model_config = ConfigDict(extra="allow")
     type: str
+
 
 class LocalToolInvocationEvent(BaseModel):
     model_config = ConfigDict(extra="allow")

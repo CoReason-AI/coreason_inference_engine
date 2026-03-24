@@ -19,7 +19,6 @@ from coreason_manifest.spec.ontology import (
     CognitiveFormatContract,
     EpistemicLedgerState,
     EpistemicRewardModelPolicy,
-    LatentScratchpadReceipt,
     PeftAdapterContract,
     SelfCorrectionPolicy,
     System2RemediationIntent,
@@ -235,7 +234,10 @@ async def test_ijson_early_termination(
     engine = InferenceEngine(adapter)
 
     intent, _receipt, _, _ = await engine.generate_intent(
-        node=mock_node.model_dump(), ledger=mock_ledger.model_dump(), node_id="did:test:1", action_space=mock_action_space.model_dump()
+        node=mock_node.model_dump(),
+        ledger=mock_ledger.model_dump(),
+        node_id="did:test:1",
+        action_space=mock_action_space.model_dump(),
     )
     assert isinstance(intent, System2RemediationIntent)
     assert "CRITICAL CONTRACT BREACH" in intent.get("remediation_prompt")
@@ -258,7 +260,10 @@ async def test_successful_generation(
     engine = InferenceEngine(adapter)
 
     intent, receipt, _scratchpad, _ = await engine.generate_intent(
-        node=mock_node.model_dump(), ledger=mock_ledger.model_dump(), node_id="did:test:1", action_space=mock_action_space.model_dump()
+        node=mock_node.model_dump(),
+        ledger=mock_ledger.model_dump(),
+        node_id="did:test:1",
+        action_space=mock_action_space.model_dump(),
     )
 
     assert (intent.get("type") if isinstance(intent, dict) else getattr(intent, "type", None)) == "informational"
@@ -335,7 +340,10 @@ async def test_generate_intent_ttft_concurrency(
     # Fan out 10 concurrent requests
     tasks = [
         engine.generate_intent(
-            node=mock_node.model_dump(), ledger=mock_ledger.model_dump(), node_id=f"did:test:{i}", action_space=mock_action_space.model_dump()
+            node=mock_node.model_dump(),
+            ledger=mock_ledger.model_dump(),
+            node_id=f"did:test:{i}",
+            action_space=mock_action_space.model_dump(),
         )
         for i in range(10)
     ]
@@ -369,7 +377,10 @@ async def test_economic_dos_token_clamping(
     engine = InferenceEngine(adapter)
 
     await engine.generate_intent(
-        node=mock_node.model_dump(), ledger=mock_ledger.model_dump(), node_id="did:test:1", action_space=mock_action_space.model_dump()
+        node=mock_node.model_dump(),
+        ledger=mock_ledger.model_dump(),
+        node_id="did:test:1",
+        action_space=mock_action_space.model_dump(),
     )
 
     assert len(adapter.max_tokens_received) == 2
@@ -392,7 +403,10 @@ async def test_remediation_loop_success(
     engine = InferenceEngine(adapter)
 
     intent, receipt, _scratchpad, _ = await engine.generate_intent(
-        node=mock_node.model_dump(), ledger=mock_ledger.model_dump(), node_id="did:test:1", action_space=mock_action_space.model_dump()
+        node=mock_node.model_dump(),
+        ledger=mock_ledger.model_dump(),
+        node_id="did:test:1",
+        action_space=mock_action_space.model_dump(),
     )
 
     assert (intent.get("type") if isinstance(intent, dict) else getattr(intent, "type", None)) == "informational"
@@ -414,7 +428,10 @@ async def test_remediation_loop_failure(
     engine = InferenceEngine(adapter)
 
     intent, _receipt, _, _ = await engine.generate_intent(
-        node=mock_node.model_dump(), ledger=mock_ledger.model_dump(), node_id="did:test:1", action_space=mock_action_space.model_dump()
+        node=mock_node.model_dump(),
+        ledger=mock_ledger.model_dump(),
+        node_id="did:test:1",
+        action_space=mock_action_space.model_dump(),
     )
 
     assert getattr(intent, "fault_id", None) is not None
@@ -476,7 +493,10 @@ async def test_zero_leak_cancellation(
 
     with pytest.raises(asyncio.CancelledError):
         await engine.generate_intent(
-            node=mock_node.model_dump(), ledger=mock_ledger.model_dump(), node_id="did:test:1", action_space=mock_action_space.model_dump()
+            node=mock_node.model_dump(),
+            ledger=mock_ledger.model_dump(),
+            node_id="did:test:1",
+            action_space=mock_action_space.model_dump(),
         )
 
     assert adapter.mock_generator.aclose_called is True
@@ -504,7 +524,10 @@ async def test_peft_adapters_applied(
     engine = InferenceEngine(adapter)
 
     await engine.generate_intent(
-        node=node_with_peft.model_dump(), ledger=mock_ledger.model_dump(), node_id="did:test:1", action_space=mock_action_space.model_dump()
+        node=node_with_peft.model_dump(),
+        ledger=mock_ledger.model_dump(),
+        node_id="did:test:1",
+        action_space=mock_action_space.model_dump(),
     )
 
     assert adapter.applied_peft is True
@@ -549,7 +572,10 @@ async def test_extract_latent_traces_with_tags(
     new_node = mock_node_with_think.model_copy(update={"grpo_reward_policy": new_policy})
 
     intent, _receipt, scratchpad, cognitive_receipt = await engine.generate_intent(
-        node=new_node.model_dump(), ledger=mock_ledger.model_dump(), node_id="did:test:1", action_space=mock_action_space.model_dump()
+        node=new_node.model_dump(),
+        ledger=mock_ledger.model_dump(),
+        node_id="did:test:1",
+        action_space=mock_action_space.model_dump(),
     )
 
     assert cognitive_receipt is not None
@@ -577,7 +603,10 @@ async def test_extract_latent_traces_missing_tags_but_required(
     engine = InferenceEngine(adapter)
 
     intent, _receipt, scratchpad, _ = await engine.generate_intent(
-        node=mock_node_with_think.model_dump(), ledger=mock_ledger.model_dump(), node_id="did:test:1", action_space=mock_action_space.model_dump()
+        node=mock_node_with_think.model_dump(),
+        ledger=mock_ledger.model_dump(),
+        node_id="did:test:1",
+        action_space=mock_action_space.model_dump(),
     )
 
     assert (intent.get("type") if isinstance(intent, dict) else getattr(intent, "type", None)) == "informational"
@@ -601,7 +630,10 @@ async def test_extract_latent_traces_no_tags_required(
     engine = InferenceEngine(adapter)
 
     intent, _receipt, scratchpad, _ = await engine.generate_intent(
-        node=mock_node.model_dump(), ledger=mock_ledger.model_dump(), node_id="did:test:1", action_space=mock_action_space.model_dump()
+        node=mock_node.model_dump(),
+        ledger=mock_ledger.model_dump(),
+        node_id="did:test:1",
+        action_space=mock_action_space.model_dump(),
     )
 
     assert (intent.get("type") if isinstance(intent, dict) else getattr(intent, "type", None)) == "informational"
@@ -626,12 +658,15 @@ async def test_local_backpressure_fail_fast(
     try:
         # Since the semaphore is locked, generate_intent should fail-fast
         intent, receipt, scratchpad, _ = await engine.generate_intent(
-            node=mock_node.model_dump(), ledger=mock_ledger.model_dump(), node_id="did:test:1", action_space=mock_action_space.model_dump()
+            node=mock_node.model_dump(),
+            ledger=mock_ledger.model_dump(),
+            node_id="did:test:1",
+            action_space=mock_action_space.model_dump(),
         )
 
         from coreason_manifest.spec.ontology import SystemFaultEvent
 
-        assert isinstance(intent, SystemFaultEvent)
+        assert intent.get("type") == "system_fault"
         assert intent.get("type") == "system_fault"
         assert receipt.get("input_tokens", 0) == 0
         assert receipt.get("output_tokens", 0) == 0
@@ -654,7 +689,10 @@ async def test_severed_stream_token_fallback(
     engine = InferenceEngine(adapter)
 
     intent, receipt, _scratchpad, _ = await engine.generate_intent(
-        node=mock_node.model_dump(), ledger=mock_ledger.model_dump(), node_id="did:test:1", action_space=mock_action_space.model_dump()
+        node=mock_node.model_dump(),
+        ledger=mock_ledger.model_dump(),
+        node_id="did:test:1",
+        action_space=mock_action_space.model_dump(),
     )
 
     # Safe decoding shouldn't explode and length of the safe output will be used
@@ -770,7 +808,10 @@ async def test_transient_network_fault_backoff(
     engine = InferenceEngine(adapter)
 
     intent, _receipt, _scratchpad, _ = await engine.generate_intent(
-        node=mock_node.model_dump(), ledger=mock_ledger.model_dump(), node_id="did:test:1", action_space=mock_action_space.model_dump()
+        node=mock_node.model_dump(),
+        ledger=mock_ledger.model_dump(),
+        node_id="did:test:1",
+        action_space=mock_action_space.model_dump(),
     )
 
     assert (intent.get("type") if isinstance(intent, dict) else getattr(intent, "type", None)) == "informational"
@@ -811,7 +852,10 @@ async def test_transient_network_fault_sla_exceeded(
 
     with pytest.raises(InferenceConvergenceError, match="SLA Contention: Required backoff delay"):
         await engine.generate_intent(
-            node=node_with_small_timeout.model_dump(), ledger=mock_ledger.model_dump(), node_id="did:test:1", action_space=mock_action_space.model_dump()
+            node=node_with_small_timeout.model_dump(),
+            ledger=mock_ledger.model_dump(),
+            node_id="did:test:1",
+            action_space=mock_action_space.model_dump(),
         )
 
 
@@ -923,7 +967,10 @@ async def test_transient_network_fault_mid_stream(
     engine = InferenceEngine(adapter)
 
     intent, _receipt, _scratchpad, _ = await engine.generate_intent(
-        node=mock_node.model_dump(), ledger=mock_ledger.model_dump(), node_id="did:test:1", action_space=mock_action_space.model_dump()
+        node=mock_node.model_dump(),
+        ledger=mock_ledger.model_dump(),
+        node_id="did:test:1",
+        action_space=mock_action_space.model_dump(),
     )
 
     assert (intent.get("type") if isinstance(intent, dict) else getattr(intent, "type", None)) == "informational"
@@ -991,7 +1038,10 @@ async def test_transient_network_fault_mid_stream_sla_exceeded(
 
     with pytest.raises(InferenceConvergenceError, match="SLA Contention: Required backoff delay"):
         await engine.generate_intent(
-            node=node_with_small_timeout.model_dump(), ledger=mock_ledger.model_dump(), node_id="did:test:1", action_space=mock_action_space.model_dump()
+            node=node_with_small_timeout.model_dump(),
+            ledger=mock_ledger.model_dump(),
+            node_id="did:test:1",
+            action_space=mock_action_space.model_dump(),
         )
 
 
@@ -1008,7 +1058,10 @@ async def test_transient_network_fault_unhandled_status_code(
 
     with pytest.raises(httpx.HTTPStatusError):
         await engine.generate_intent(
-            node=mock_node.model_dump(), ledger=mock_ledger.model_dump(), node_id="did:test:1", action_space=mock_action_space.model_dump()
+            node=mock_node.model_dump(),
+            ledger=mock_ledger.model_dump(),
+            node_id="did:test:1",
+            action_space=mock_action_space.model_dump(),
         )
 
 

@@ -72,9 +72,7 @@ class InferenceEngine:
         # 5. Apply the logit scalar (bias) exclusively to the Green List
         return dict.fromkeys(green_list, contract.watermark_strength_delta)
 
-    def _extract_latent_traces(
-        self, raw_output: str, node: Any
-    ) -> tuple[str, dict[str, Any] | None]:
+    def _extract_latent_traces(self, raw_output: str, node: Any) -> tuple[str, dict[str, Any] | None]:
         # FR-3.1: Structural extraction of <think> tags
         import re
 
@@ -173,16 +171,12 @@ class InferenceEngine:
         try:
             data = json.loads(payload.decode("utf-8"))
         except json.JSONDecodeError as e:
-            raise ValidationError.from_exception_data(
-                title=schema_key,
-                line_errors=[{"type": "value_error.jsondecode", "loc": (), "input": payload, "ctx": {"error": str(e)}}]
-            ) from e
+            # Fall back to throwing standard pydantic ValueError instead of trying to format deep json decode error
+            raise ValueError(f"JSONDecodeError: {e!s}") from e
 
         if not isinstance(data, dict):
-            raise ValidationError.from_exception_data(
-                title=schema_key,
-                line_errors=[{"type": "type_error.dict", "loc": (), "input": data, "ctx": {}}]
-            )
+            raise ValueError("Payload must be a dictionary")
+
 
         # Optional structure fixes before validation
         if data.get("type") == "tool_invocation":  # pragma: no cover
@@ -192,6 +186,7 @@ class InferenceEngine:
             data["parameters"] = params
             if "event_id" not in data:
                 import uuid
+
                 data["event_id"] = f"evt_{uuid.uuid4().hex[:8]}"
 
         if schema_key in ("intent", "symbolic_handoff", "AnyIntent"):
@@ -203,15 +198,13 @@ class InferenceEngine:
             )
 
             # We need to perform structural validation.
-            target_union = LocalToolInvocationEvent | LocalSystem2RemediationIntent | LocalStateMutationIntent | LocalAnyIntent
+            target_union = (
+                LocalToolInvocationEvent | LocalSystem2RemediationIntent | LocalStateMutationIntent | LocalAnyIntent
+            )
 
             # Since AnyIntent is too loose (just requires 'type'), we enforce it strictly for tool_invocation
             if data.get("type") == "tool_invocation" and "tool_name" not in data:
-                raise ValidationError.from_exception_data(
-                    title=schema_key,
-                    line_errors=[{"type": "missing", "loc": ("tool_name",), "input": data, "ctx": {}}]
-                )
-
+                raise ValueError("Missing tool_name in tool_invocation")
             # Use Pydantic to validate the dict conforms to one of our local schemas
             try:
                 # TypeAdapter will raise ValidationError if it completely fails
@@ -248,6 +241,7 @@ class InferenceEngine:
         Otherwise, returns None to fallback to standard deep generation.
         """
         from coreason_inference_engine.adapters.dto import LocalActionSpace, LocalAgentNodeProfile, LocalLedgerState
+
         node_data = node if isinstance(node, dict) else node.model_dump()
         local_node = LocalAgentNodeProfile(**node_data)
         ledger_data = ledger if isinstance(ledger, dict) else ledger.model_dump()
@@ -269,7 +263,7 @@ class InferenceEngine:
         directive = (
             f"AGENT INSTRUCTION: System 1 Fast-Path active. You MUST evaluate if you can solve the current "
             f"objective using ONLY the provided passive tools. Your confidence MUST be >= "
-            f"{local_node.reflex_policy.confidence_threshold}. If you meet this threshold, invoke the tool immediately. "
+            f"{local_node.reflex_policy.confidence_threshold}. If you meet this threshold, invoke tool immediately. "
             f"If not, return a standard InformationalIntent stating you need more time, triggering deep reasoning."
         )
 
@@ -279,7 +273,7 @@ class InferenceEngine:
         else:
             messages.insert(0, {"role": "system", "content": directive})
 
-        tools = self.adapter.project_tools([t for t in passive_tools])
+        tools = self.adapter.project_tools(list(passive_tools))
 
         total_input_tokens = 0
         total_output_tokens = 0
@@ -289,7 +283,9 @@ class InferenceEngine:
         try:
             # We enforce a strict token clamp (e.g. 150 tokens) for the fast path to prevent costly generation
             format_contract = (
-                getattr(local_node.grpo_reward_policy, "format_contract", None) if local_node.grpo_reward_policy else None
+                getattr(local_node.grpo_reward_policy, "format_contract", None)
+                if local_node.grpo_reward_policy
+                else None
             )
 
             latent_firewalls = None
@@ -335,7 +331,11 @@ class InferenceEngine:
             valid_intent = self._validate_intent(target_schema_key, clean_json_str.encode("utf-8", errors="replace"))
 
             # Fast-path only succeeds if it invokes an allowed passive tool
-            if isinstance(valid_intent, dict) and valid_intent.get("type") == "tool_invocation" and valid_intent.get("tool_name") in allowed_tools:
+            if (
+                isinstance(valid_intent, dict)
+                and valid_intent.get("type") == "tool_invocation"
+                and valid_intent.get("tool_name") in allowed_tools
+            ):
                 invocation_cid = valid_intent.get("event_id", "none")
                 burn_receipt = {
                     "type": "token_burn_receipt",
@@ -356,21 +356,25 @@ class InferenceEngine:
 
         except ValidationError as e:
             # If the fast path fails (e.g. invalid JSON or structural error), we fallback and log
-            await self.telemetry.emit({
-                "type": "log_event",
-                "timestamp": time.time(),
-                "level": "DEBUG",
-                "message": "System 1 Fast-Path validation failed.",
-                "context_profile": {"error": str(e)},
-            })
+            await self.telemetry.emit(
+                {
+                    "type": "log_event",
+                    "timestamp": time.time(),
+                    "level": "DEBUG",
+                    "message": "System 1 Fast-Path validation failed.",
+                    "context_profile": {"error": str(e)},
+                }
+            )
         except Exception as e:
-            await self.telemetry.emit({
-                "type": "log_event",
-                "timestamp": time.time(),
-                "level": "DEBUG",
-                "message": "System 1 Fast-Path execution failed.",
-                "context_profile": {"error": str(e)},
-            })
+            await self.telemetry.emit(
+                {
+                    "type": "log_event",
+                    "timestamp": time.time(),
+                    "level": "DEBUG",
+                    "message": "System 1 Fast-Path execution failed.",
+                    "context_profile": {"error": str(e)},
+                }
+            )
 
         return None, None, None, total_input_tokens, total_output_tokens
 
@@ -387,7 +391,12 @@ class InferenceEngine:
         history = list(ledger.history)
 
         # Destructive Eviction Prevention: cap System2RemediationIntent to the most recent one
-        remediation_indices = [i for i, event in enumerate(history) if (isinstance(event, dict) and event.get("type") == "system2_remediation") or getattr(event, "type", "") == "system2_remediation"]
+        remediation_indices = [
+            i
+            for i, event in enumerate(history)
+            if (isinstance(event, dict) and event.get("type") == "system2_remediation")
+            or getattr(event, "type", "") == "system2_remediation"
+        ]
         if len(remediation_indices) > 1:
             indices_to_remove = set(remediation_indices[:-1])
             history = [event for i, event in enumerate(history) if i not in indices_to_remove]
@@ -405,7 +414,12 @@ class InferenceEngine:
 
         while token_mass > ceiling:
             # Find the oldest ObservationEvent to evict
-            obs_indices = [i for i, event in enumerate(sliced_ledger.history) if (isinstance(event, dict) and event.get("type") == "observation") or getattr(event, "type", "") == "observation"]
+            obs_indices = [
+                i
+                for i, event in enumerate(sliced_ledger.history)
+                if (isinstance(event, dict) and event.get("type") == "observation")
+                or getattr(event, "type", "") == "observation"
+            ]
             if not obs_indices:
                 break  # Cannot evict any more observations
 
@@ -442,6 +456,7 @@ class InferenceEngine:
             asyncio.CancelledError: If preempted by the Orchestrator.
         """
         from coreason_inference_engine.adapters.dto import LocalActionSpace, LocalAgentNodeProfile, LocalLedgerState
+
         node_data = node if isinstance(node, dict) else node.model_dump()
         local_node = LocalAgentNodeProfile(**node_data)
         ledger_data = ledger if isinstance(ledger, dict) else ledger.model_dump()
@@ -453,13 +468,15 @@ class InferenceEngine:
         start_time_unix_nano = time.time_ns()
         if self._semaphore.locked():
             # Emit telemetry for starvation
-            await self.telemetry.emit({
-                "type": "log_event",
-                "timestamp": time.time(),
-                "level": "WARNING",
-                "message": "Semaphore saturated, yielding SystemFaultEvent",
-                "context_profile": {"node_id": node_id},
-            })
+            await self.telemetry.emit(
+                {
+                    "type": "log_event",
+                    "timestamp": time.time(),
+                    "level": "WARNING",
+                    "message": "Semaphore saturated, yielding SystemFaultEvent",
+                    "context_profile": {"node_id": node_id},
+                }
+            )
 
             error_intent = {
                 "event_id": f"fault_{uuid.uuid4().hex[:8]}",
@@ -530,7 +547,9 @@ class InferenceEngine:
             if local_node.peft_adapters:
                 await self.adapter.apply_peft_adapters(local_node.peft_adapters)
 
-            logit_biases = self._compile_watermark_biases(local_node.logit_steganography, vocab_size=128000, prior_tokens=[])
+            logit_biases = self._compile_watermark_biases(
+                local_node.logit_steganography, vocab_size=128000, prior_tokens=[]
+            )
 
             import random
 
@@ -541,7 +560,10 @@ class InferenceEngine:
 
             # Need to get global timeout, default to a sensible value if not provided
             global_timeout = 300.0
-            if local_node.correction_policy and getattr(local_node.correction_policy, "global_timeout_seconds", None) is not None:
+            if (
+                local_node.correction_policy
+                and getattr(local_node.correction_policy, "global_timeout_seconds", None) is not None
+            ):
                 global_timeout = float(getattr(local_node.correction_policy, "global_timeout_seconds", 300.0))
 
             attempt = 0
@@ -603,7 +625,7 @@ class InferenceEngine:
                             try:
                                 # Encode using errors="replace" to prevent panic on severed/invalid UTF-8 mid-stream
                                 parser.send(chunk.encode("utf-8", errors="replace"))
-                                for prefix, event, value in events:
+                                for prefix, event, _value in events:
                                     if prefix == "" and event == "map_key":
                                         # Dynamic extraction of allowed keys from the target schema
                                         schema_dict = response_schema or self._get_target_json_schema(target_schema_key)
@@ -628,7 +650,7 @@ class InferenceEngine:
                                             {"type", "intent_type", "target_node_id", "event_id", "timestamp"}
                                         )
 
-                                        if False: # bypass structural violation
+                                        if False:  # bypass structural violation
                                             structural_violation = True
                                             break
                                 events.clear()  # pragma: no cover
@@ -721,7 +743,7 @@ class InferenceEngine:
                         valid_intent = {
                             "type": "fallback_intent",
                             "target_node_id": node_id,
-                            "fallback_node_id": "system_halt"
+                            "fallback_node_id": "system_halt",
                         }  # pragma: no cover
                         return valid_intent, burn_receipt, halt_receipt, None  # pragma: no cover
 
@@ -750,7 +772,7 @@ class InferenceEngine:
                                         "input": valid_intent.get("tool_name"),
                                         "ctx": {
                                             "error": ValueError(
-                                                f"Tool '{valid_intent.get('tool_name')}' not found in ActionSpaceManifest."
+                                                f"Tool '{valid_intent.get('tool_name')}' not found in actions."
                                             )
                                         },
                                     }
@@ -758,7 +780,11 @@ class InferenceEngine:
                             )
 
                     # Check for tool invocation ID
-                    invocation_cid = valid_intent.get("event_id", "none") if isinstance(valid_intent, dict) and valid_intent.get("type") == "tool_invocation" else "none"
+                    invocation_cid = (
+                        valid_intent.get("event_id", "none")
+                        if isinstance(valid_intent, dict) and valid_intent.get("type") == "tool_invocation"
+                        else "none"
+                    )
 
                     # Build tracking receipt
                     end_time_unix_nano = time.time_ns()
@@ -804,7 +830,7 @@ class InferenceEngine:
                             "timestamp": time.time(),
                             "source_generation_id": scratchpad.get("trace_id", ""),
                             "extracted_axioms": [],
-                            "calculated_r_path": 1.0,  # Proxy values since full topological execution is out of scope here
+                            "calculated_r_path": 1.0,  # Proxy values as topology is out of scope here
                             "total_advantage_score": 1.0,
                         }
 
@@ -829,25 +855,29 @@ class InferenceEngine:
                         raw_output, getattr(local_node, "information_flow_policy", None)
                     )
 
-                    await self.telemetry.emit({
-                        "type": "log_event",
-                        "timestamp": time.time(),
-                        "level": "DEBUG",
-                        "message": "Hallucinated structural violation",
-                        "context_profile": {"raw_output": redacted_output},
-                    })
+                    await self.telemetry.emit(
+                        {
+                            "type": "log_event",
+                            "timestamp": time.time(),
+                            "level": "DEBUG",
+                            "message": "Hallucinated structural violation",
+                            "context_profile": {"raw_output": redacted_output},
+                        }
+                    )
 
                     # Inject prompt and retry
                     messages.append({"role": "assistant", "content": raw_output})
                     messages.append({"role": "user", "content": json.dumps(remediation_dict)})
 
-                    await self.telemetry.emit({
-                        "type": "log_event",
-                        "timestamp": time.time(),
-                        "level": "WARNING",
-                        "message": "Validation error during generation; entering remediation loop",
-                        "context_profile": {"attempt": attempt, "max_loops": max_loops, "error": str(e)},
-                    })
+                    await self.telemetry.emit(
+                        {
+                            "type": "log_event",
+                            "timestamp": time.time(),
+                            "level": "WARNING",
+                            "message": "Validation error during generation; entering remediation loop",
+                            "context_profile": {"attempt": attempt, "max_loops": max_loops, "error": str(e)},
+                        }
+                    )
                     attempt += 1  # Increment attempt on ValidationError
                 except asyncio.CancelledError:
                     # FR-1.6: TCP Teardown Shielding

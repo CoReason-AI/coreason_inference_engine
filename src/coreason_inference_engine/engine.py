@@ -668,13 +668,19 @@ class InferenceEngine(InferenceEngineProtocol):
                                 break
 
                         if structural_violation:
+                            from coreason_manifest.spec.ontology import ManifestViolationReceipt
                             # Fast-return remediation intent
                             remediation_intent = System2RemediationIntent(
                                 fault_id=f"fault_{uuid.uuid4().hex[:8]}",
                                 target_node_id=node_id or "",
-                                failing_pointers=["/"],
-                                remediation_prompt="CRITICAL CONTRACT BREACH: An immediate top-level structural "
-                                "violation was detected during streaming. Correct your JSON projection.",
+                                violation_receipts=[
+                                    ManifestViolationReceipt(
+                                        failing_pointer="/",
+                                        violation_type="structural_breach",
+                                        diagnostic_message="CRITICAL CONTRACT BREACH: An immediate top-level structural "
+                                        "violation was detected during streaming. Correct your JSON projection."
+                                    )
+                                ]
                             )
 
                             invocation_cid = "none"

@@ -53,6 +53,12 @@ class ContextHydrator:
             system_prompt += f"\nUrgency Index: {state.urgency_index}"
             system_prompt += f"\nCaution Index: {state.caution_index}"
 
+        # FIX: Append domain extensions to mathematically guarantee constraint adherence
+        if getattr(node, "domain_extensions", None):
+            system_prompt += "\n\nCRITICAL SYSTEM EXTENSIONS:"
+            for key, val in node.domain_extensions.items():
+                system_prompt += f"\n- {key}: {val}"
+
         if self.provider_mode == "o1":
             # o1/o3 deprecate system role, use developer/user instead
             messages.append({"role": "developer", "content": system_prompt})

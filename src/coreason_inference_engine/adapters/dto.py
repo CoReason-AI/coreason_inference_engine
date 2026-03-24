@@ -102,3 +102,40 @@ class LocalLedgerState(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     history: list[dict[str, Any]] = Field(default_factory=list)
+
+class LocalStateMutationIntent(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    type: str = "state_mutation"
+    op: str
+    path: str
+    value: Any | None = None
+    from_: str | None = Field(None, alias="from")
+    from_path: str | None = None
+
+class LocalCognitiveStateProfileSchema(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    type: str = "cognitive_sync"
+
+class LocalSystem2RemediationIntent(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    type: str = "system2_remediation"
+    fault_id: str
+    target_node_id: str
+    failing_pointers: list[str]
+    remediation_prompt: str
+
+class LocalDocumentLayoutManifest(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    type: str = "document_layout"
+
+class LocalAnyIntent(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    type: str
+
+class LocalToolInvocationEvent(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    type: str = "tool_invocation"
+    tool_name: str
+    parameters: dict[str, Any] = Field(default_factory=dict)
+    event_id: str | None = None
+    timestamp: float | None = None

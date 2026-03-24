@@ -177,7 +177,6 @@ class InferenceEngine:
         if not isinstance(data, dict):
             raise ValueError("Payload must be a dictionary")
 
-
         # Optional structure fixes before validation
         if data.get("type") == "tool_invocation":  # pragma: no cover
             params = data.get("parameters", {})

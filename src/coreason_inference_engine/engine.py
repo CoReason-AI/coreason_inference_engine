@@ -522,6 +522,22 @@ class InferenceEngine(InferenceEngineProtocol):
             # For now, we apply pruning if any specific boundary exists.
             allowed_tools = list(action_space.native_tools)
 
+            # Dynamically synthesize ToolManifests for each MCPServerManifest
+            if getattr(action_space, "mcp_servers", None):
+                from coreason_manifest.spec.ontology import ToolManifest, SideEffectProfile, PermissionBoundaryPolicy
+                for mcp in action_space.mcp_servers:
+                    whitelist = getattr(mcp, "capability_whitelist", None)
+                    tools_to_expose = getattr(whitelist, "allowed_tools", []) if whitelist else [mcp.server_id]
+                    for t_name in tools_to_expose:
+                        synth_tool = ToolManifest(
+                            tool_name=t_name,
+                            description=f"MCP Capability tool '{t_name}' provided by server {mcp.server_id}. Allows semantic queries.",
+                            input_schema={"query": {"type": "string"}},
+                            side_effects=SideEffectProfile(is_idempotent=True, mutates_state=False),
+                            permissions=PermissionBoundaryPolicy(network_access=True, file_system_mutation_forbidden=True)
+                        )
+                        allowed_tools.append(synth_tool)
+
             # The BRD gap mentions evaluating "node.information_flow_policy and node.permissions".
             # If the properties exist dynamically, we use getattr.
             info_policy = getattr(node, "information_flow_policy", None)
@@ -736,7 +752,7 @@ class InferenceEngine(InferenceEngineProtocol):
 
                     # FR-4.5: Hallucinated Tool Escalation
                     if isinstance(valid_intent, ToolInvocationEvent):
-                        allowed_tools_names = {t.tool_name for t in action_space.native_tools}
+                        allowed_tools_names = {t.tool_name for t in allowed_tools}
                         if valid_intent.tool_name not in allowed_tools_names:
                             from pydantic import ValidationError as PydanticValidationError
 
@@ -807,6 +823,7 @@ class InferenceEngine(InferenceEngineProtocol):
                     return valid_intent, burn_receipt, scratchpad, cognitive_receipt
 
                 except ValidationError as e:
+                    print(f"\\n\\n=========== EXACT PYDANTIC VALIDATION ERROR ===========\\n{e}\\n=======================================================\\n\\n")
                     # FR-3.3, FR-3.4: Trap validation failure and generate mathematical reprimand
                     fault_id = f"fault_{uuid.uuid4().hex[:8]}"
 

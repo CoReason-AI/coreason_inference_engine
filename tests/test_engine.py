@@ -664,8 +664,6 @@ async def test_local_backpressure_fail_fast(
             action_space=mock_action_space.model_dump(),
         )
 
-        from coreason_manifest.spec.ontology import SystemFaultEvent
-
         assert intent.get("type") == "system_fault"
         assert intent.get("type") == "system_fault"
         assert receipt.get("input_tokens", 0) == 0

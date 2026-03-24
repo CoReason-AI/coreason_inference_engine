@@ -328,7 +328,7 @@ async def test_generate_intent_ttft_concurrency(
         async def emit(self, event: Any) -> None:
             from coreason_manifest.spec.ontology import ExecutionSpanReceipt
 
-            if isinstance(event, ExecutionSpanReceipt):
+            if isinstance(event, dict) and event.get("type") == "execution_span":
                 self.spans.append(event)
 
         def redact_pii(self, payload: str, _policy: Any) -> str:
@@ -355,10 +355,10 @@ async def test_generate_intent_ttft_concurrency(
 
     # Ensure all span traces have valid ttft
     for span in emitter.spans:
-        assert len(span.events) > 0
-        first_token_event = next(e for e in span.events if e.name == "first_token")
-        assert "ttft_nano" in first_token_event.attributes
-        ttft = first_token_event.attributes["ttft_nano"]
+        assert len(span.get("events", [])) > 0
+        first_token_event = next(e for e in span.get("events", []) if getattr(e, "name", e.get("name")) == "first_token")
+        assert "ttft_nano" in getattr(first_token_event, "attributes", first_token_event.get("attributes", {}))
+        ttft = getattr(first_token_event, "attributes", first_token_event.get("attributes", {}))["ttft_nano"]
         assert isinstance(ttft, int)
         assert ttft > 0  # Must have elapsed some time
 
@@ -410,7 +410,7 @@ async def test_remediation_loop_success(
     )
 
     assert (intent.get("type") if isinstance(intent, dict) else getattr(intent, "type", None)) == "informational"
-    assert getattr(intent, "message", None) == "fixed"
+    assert intent.get("message") == "fixed"
     # 1st call: 10 in, 10 out. 2nd call: 10 in, 10 out. Total 20/20.
     assert receipt.get("input_tokens", 0) == 20
     assert receipt.get("output_tokens", 0) == 20
@@ -588,7 +588,7 @@ async def test_extract_latent_traces_with_tags(
     import hashlib
 
     expected_hash = hashlib.sha256(b"This is a reasoning trace.").hexdigest()
-    assert branch.latent_content_hash == expected_hash
+    assert branch.get("latent_content_hash") == expected_hash
 
 
 @pytest.mark.asyncio

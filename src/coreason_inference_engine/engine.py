@@ -204,6 +204,8 @@ class InferenceEngine:
             # Since AnyIntent is too loose (just requires 'type'), we enforce it strictly for tool_invocation
             if data.get("type") == "tool_invocation" and "tool_name" not in data:
                 raise ValueError("Missing tool_name in tool_invocation")
+            if data.get("type") == "informational" and "message" not in data:
+                raise ValueError("Missing message in informational")
             # Use Pydantic to validate the dict conforms to one of our local schemas
             try:
                 # TypeAdapter will raise ValidationError if it completely fails
@@ -649,7 +651,7 @@ class InferenceEngine:
                                             {"type", "intent_type", "target_node_id", "event_id", "timestamp"}
                                         )
 
-                                        if False:  # bypass structural violation
+                                        if _value not in allowed_keys:
                                             structural_violation = True
                                             break
                                 events.clear()  # pragma: no cover
@@ -835,7 +837,7 @@ class InferenceEngine:
 
                     return valid_intent, burn_receipt, scratchpad, cognitive_receipt
 
-                except ValidationError as e:
+                except (ValidationError, ValueError) as e:
                     # FR-3.3, FR-3.4: Trap validation failure and generate mathematical reprimand
                     fault_id = f"fault_{uuid.uuid4().hex[:8]}"
 

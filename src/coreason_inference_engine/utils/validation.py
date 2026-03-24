@@ -15,7 +15,7 @@ class ConstrainedDecodingPolicy(BaseModel):
     pass
 
 
-def generate_correction_prompt(error: ValidationError, target_node_id: str, fault_id: str) -> System2RemediationIntent:
+def generate_correction_prompt(error: Exception, target_node_id: str, fault_id: str) -> System2RemediationIntent:
     """
     Pure functional adapter. Maps a raw Pythonic pydantic.ValidationError into a
     language-model-legible System2RemediationIntent without triggering runtime side effects.
@@ -23,6 +23,13 @@ def generate_correction_prompt(error: ValidationError, target_node_id: str, faul
     failing_pointers = []
     remediation_prompts = []
 
+    if not hasattr(error, "errors"):
+        return System2RemediationIntent(
+            fault_id=fault_id,
+            target_node_id=target_node_id,
+            failing_pointers=["/"],
+            remediation_prompt=str(error)
+        )
     for err in error.errors():
         loc_path = "".join(f"/{item!s}" for item in err["loc"]) if err["loc"] else "/"
         err_type = str(err.get("type", "unknown"))

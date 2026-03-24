@@ -141,8 +141,8 @@ def mock_validate_payload() -> Any:
         return target_schema.model_validate_json(payload)
 
     with (
-        patch("coreason_manifest.utils.algebra.validate_payload", side_effect=_mocked_validate),
-        patch("coreason_inference_engine.engine.validate_payload", side_effect=_mocked_validate),
+        patch("coreason_manifest.utils.algebra.validate_payload", side_effect=_mocked_validate, create=True),
+        patch("coreason_inference_engine.engine.validate_payload", side_effect=_mocked_validate, create=True),
     ):
         yield
 

@@ -12,52 +12,52 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class LocalFormatContract(BaseModel):
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="allow")
     require_think_tags: bool = False
 
 
 class LocalEpistemicRewardModelPolicy(BaseModel):
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="allow")
     format_contract: LocalFormatContract | None = None
     topological_scoring: Any | None = None
 
 
 class LocalSemanticSlicingPolicy(BaseModel):
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="allow")
     context_window_token_ceiling: int
 
 
 class LocalCognitiveStateProfile(BaseModel):
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="allow")
     semantic_slicing: LocalSemanticSlicingPolicy | None = None
 
 
 class LocalSelfCorrectionPolicy(BaseModel):
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="allow")
     max_loops: int = 3
     global_timeout_seconds: float | None = None
 
 
 class LocalSystem1ReflexPolicy(BaseModel):
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="allow")
     confidence_threshold: float
     allowed_passive_tools: list[str]
 
 
 class LocalLogitSteganographyContract(BaseModel):
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="allow")
     prf_seed_hash: str
     watermark_strength_delta: float
 
 
 class LocalPeftAdapterContract(BaseModel):
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="allow")
     # Using generic dict parsing as the engine offloads hot-swapping to LLM adapters
     # We will just pass dicts, or define fields if needed.
 
 
 class LocalPermissions(BaseModel):
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="allow")
     allowed_tools: list[str] = Field(default_factory=list)
 
 
@@ -67,7 +67,7 @@ class LocalAgentNodeProfile(BaseModel):
     Silently drops unknown fields.
     """
 
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="allow")
 
     baseline_cognitive_state: LocalCognitiveStateProfile | None = None
     correction_policy: LocalSelfCorrectionPolicy | None = None
@@ -88,7 +88,7 @@ class LocalActionSpace(BaseModel):
     Silently drops unknown fields.
     """
 
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="allow")
 
     native_tools: list[dict[str, Any]] = Field(default_factory=list)
 
@@ -99,12 +99,12 @@ class LocalLedgerState(BaseModel):
     Silently drops unknown fields.
     """
 
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="allow")
 
     history: list[dict[str, Any]] = Field(default_factory=list)
 
 class LocalStateMutationIntent(BaseModel):
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="allow")
     type: str = "state_mutation"
     op: str
     path: str
@@ -113,11 +113,11 @@ class LocalStateMutationIntent(BaseModel):
     from_path: str | None = None
 
 class LocalCognitiveStateProfileSchema(BaseModel):
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="allow")
     type: str = "cognitive_sync"
 
 class LocalSystem2RemediationIntent(BaseModel):
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="allow")
     type: str = "system2_remediation"
     fault_id: str
     target_node_id: str
@@ -125,15 +125,15 @@ class LocalSystem2RemediationIntent(BaseModel):
     remediation_prompt: str
 
 class LocalDocumentLayoutManifest(BaseModel):
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="allow")
     type: str = "document_layout"
 
 class LocalAnyIntent(BaseModel):
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="allow")
     type: str
 
 class LocalToolInvocationEvent(BaseModel):
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="allow")
     type: str = "tool_invocation"
     tool_name: str
     parameters: dict[str, Any] = Field(default_factory=dict)

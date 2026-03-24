@@ -73,7 +73,7 @@ class InferenceEngine:
         return dict.fromkeys(green_list, contract.watermark_strength_delta)
 
     def _extract_latent_traces(
-        self, raw_output: str, node: "LocalAgentNodeProfile"
+        self, raw_output: str, node: Any
     ) -> tuple[str, dict[str, Any] | None]:
         # FR-3.1: Structural extraction of <think> tags
         import re
@@ -129,11 +129,11 @@ class InferenceEngine:
 
     def _get_target_json_schema(self, schema_key: str) -> dict[str, Any]:
         from coreason_inference_engine.adapters.dto import (
+            LocalAnyIntent,
             LocalCognitiveStateProfileSchema,
             LocalDocumentLayoutManifest,
             LocalStateMutationIntent,
             LocalSystem2RemediationIntent,
-            LocalAnyIntent,
         )
 
         registry = {
@@ -152,11 +152,11 @@ class InferenceEngine:
 
         target_schema = registry.get(schema_key)
         if target_schema is not None:
-            return dict(target_schema.model_json_schema())
+            return dict(getattr(target_schema, "model_json_schema", lambda: {"type": "object"})())
 
         return {"type": "object"}
 
-    def _determine_target_schema(self, node: "LocalAgentNodeProfile") -> str:
+    def _determine_target_schema(self, node: Any) -> str:
         if node.interventional_policy is not None:
             return "state_differential"
 
@@ -166,8 +166,9 @@ class InferenceEngine:
         return "intent"
 
     def _validate_intent(self, schema_key: str, payload: bytes) -> dict[str, Any]:
-        from pydantic import ValidationError, TypeAdapter
         import json
+
+        from pydantic import TypeAdapter, ValidationError
 
         try:
             data = json.loads(payload.decode("utf-8"))
@@ -195,7 +196,10 @@ class InferenceEngine:
 
         if schema_key in ("intent", "symbolic_handoff", "AnyIntent"):
             from coreason_inference_engine.adapters.dto import (
-                LocalAnyIntent, LocalSystem2RemediationIntent, LocalStateMutationIntent, LocalToolInvocationEvent
+                LocalAnyIntent,
+                LocalStateMutationIntent,
+                LocalSystem2RemediationIntent,
+                LocalToolInvocationEvent,
             )
 
             # We need to perform structural validation.
@@ -243,10 +247,13 @@ class InferenceEngine:
         If the model yields a valid ToolInvocationEvent within the subset, returns it immediately.
         Otherwise, returns None to fallback to standard deep generation.
         """
-        from coreason_inference_engine.adapters.dto import LocalAgentNodeProfile, LocalLedgerState, LocalActionSpace
-        local_node = LocalAgentNodeProfile(**node)
-        local_ledger = LocalLedgerState(**ledger)
-        local_action_space = LocalActionSpace(**action_space)
+        from coreason_inference_engine.adapters.dto import LocalActionSpace, LocalAgentNodeProfile, LocalLedgerState
+        node_data = node if isinstance(node, dict) else node.model_dump()
+        local_node = LocalAgentNodeProfile(**node_data)
+        ledger_data = ledger if isinstance(ledger, dict) else ledger.model_dump()
+        local_ledger = LocalLedgerState(**ledger_data)
+        action_space_data = action_space if isinstance(action_space, dict) else action_space.model_dump()
+        local_action_space = LocalActionSpace(**action_space_data)
 
         assert local_node.reflex_policy is not None
         allowed_tools = set(local_node.reflex_policy.allowed_passive_tools)
@@ -272,7 +279,7 @@ class InferenceEngine:
         else:
             messages.insert(0, {"role": "system", "content": directive})
 
-        tools = self.adapter.project_tools([t.model_dump() for t in passive_tools])
+        tools = self.adapter.project_tools([t for t in passive_tools])
 
         total_input_tokens = 0
         total_output_tokens = 0
@@ -298,7 +305,7 @@ class InferenceEngine:
                 latent_firewalls=latent_firewalls,
                 format_contract=format_contract,
             )
-            halt_receipt: LatentScratchpadReceipt | None = None
+            halt_receipt: dict[str, Any] | None = None
             async for chunk, usage, receipt in stream:
                 if receipt:
                     halt_receipt = receipt  # pragma: no cover
@@ -367,7 +374,7 @@ class InferenceEngine:
 
         return None, None, None, total_input_tokens, total_output_tokens
 
-    def _apply_semantic_slicing(self, node: "LocalAgentNodeProfile", ledger: "LocalLedgerState") -> list[dict[str, Any]]:
+    def _apply_semantic_slicing(self, node: Any, ledger: Any) -> list[dict[str, Any]]:
         """
         Applies semantic slicing policy to prevent context window overflow.
         Recursively evicts the oldest ObservationEvent payloads if token ceiling is exceeded.
@@ -380,7 +387,7 @@ class InferenceEngine:
         history = list(ledger.history)
 
         # Destructive Eviction Prevention: cap System2RemediationIntent to the most recent one
-        remediation_indices = [i for i, event in enumerate(history) if isinstance(event, dict) and event.get("type") == "system2_remediation"]
+        remediation_indices = [i for i, event in enumerate(history) if (isinstance(event, dict) and event.get("type") == "system2_remediation") or getattr(event, "type", "") == "system2_remediation"]
         if len(remediation_indices) > 1:
             indices_to_remove = set(remediation_indices[:-1])
             history = [event for i, event in enumerate(history) if i not in indices_to_remove]
@@ -398,7 +405,7 @@ class InferenceEngine:
 
         while token_mass > ceiling:
             # Find the oldest ObservationEvent to evict
-            obs_indices = [i for i, event in enumerate(sliced_ledger.history) if isinstance(event, dict) and event.get("type") == "observation" or getattr(event, "type", "") == "observation"]
+            obs_indices = [i for i, event in enumerate(sliced_ledger.history) if (isinstance(event, dict) and event.get("type") == "observation") or getattr(event, "type", "") == "observation"]
             if not obs_indices:
                 break  # Cannot evict any more observations
 
@@ -434,10 +441,13 @@ class InferenceEngine:
             InferenceConvergenceError: If max_loops are exceeded or upstream API fatally fails.
             asyncio.CancelledError: If preempted by the Orchestrator.
         """
-        from coreason_inference_engine.adapters.dto import LocalAgentNodeProfile, LocalLedgerState, LocalActionSpace
-        local_node = LocalAgentNodeProfile(**node)
-        local_ledger = LocalLedgerState(**ledger)
-        local_action_space = LocalActionSpace(**action_space)
+        from coreason_inference_engine.adapters.dto import LocalActionSpace, LocalAgentNodeProfile, LocalLedgerState
+        node_data = node if isinstance(node, dict) else node.model_dump()
+        local_node = LocalAgentNodeProfile(**node_data)
+        ledger_data = ledger if isinstance(ledger, dict) else ledger.model_dump()
+        local_ledger = LocalLedgerState(**ledger_data)
+        action_space_data = action_space if isinstance(action_space, dict) else action_space.model_dump()
+        local_action_space = LocalActionSpace(**action_space_data)
 
         # CRITICAL FIX: Deadlock Prevention via Local Backpressure
         start_time_unix_nano = time.time_ns()

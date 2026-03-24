@@ -12,7 +12,9 @@ import re
 
 from coreason_manifest.spec.ontology import ExecutionSpanReceipt, InformationFlowPolicy, LogEvent
 
-type TelemetryEvent = ExecutionSpanReceipt | LogEvent
+from typing import Any
+
+type TelemetryEvent = ExecutionSpanReceipt | LogEvent | dict[str, Any]
 
 
 class TelemetryEmitter:

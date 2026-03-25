@@ -240,7 +240,7 @@ async def test_ijson_early_termination(
     )
     assert isinstance(intent, dict)
     assert intent.get("type") == "system2_remediation"
-    assert "CRITICAL CONTRACT BREACH" in intent.get("remediation_prompt")
+    assert "CRITICAL CONTRACT BREACH" in str(intent.get("remediation_prompt", ""))
     # It should have called aclose on the stream
     assert getattr(adapter, "aclose_called", False)
 

@@ -42,9 +42,9 @@ class InferenceRPCServer:
         async def generate_intent(request: Request) -> Any:
             try:
                 data = await request.json()
-                node = AgentNodeProfile.model_validate(data.get("node"))
-                ledger = EpistemicLedgerState.model_validate(data.get("ledger"))
-                action_space = ActionSpaceManifest.model_validate(data.get("action_space"))
+                node = data.get("node")
+                ledger = data.get("ledger")
+                action_space = data.get("action_space")
                 node_id = data.get("node_id")
 
                 if not node_id:

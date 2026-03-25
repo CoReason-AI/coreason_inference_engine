@@ -26,11 +26,11 @@ class AnthropicAdapter(BaseHttpAdapter):
     ) -> None:
         super().__init__(api_url, api_key or "", max_connections)
         self.model_name = model_name or "claude-3-5-sonnet-20241022"
-        self.rate_card = dict(
-            cost_per_million_input_tokens=3,
-            cost_per_million_output_tokens=15,
-            magnitude_unit="USD",
-        )
+        self.rate_card = {
+            "cost_per_million_input_tokens": 3,
+            "cost_per_million_output_tokens": 15,
+            "magnitude_unit": "USD",
+        }
         self._encoding = tiktoken.get_encoding("cl100k_base")
 
     def count_tokens(self, text: str | bytes) -> int:

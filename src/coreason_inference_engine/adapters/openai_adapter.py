@@ -28,11 +28,11 @@ class OpenAIAdapter(BaseHttpAdapter):
     ) -> None:
         super().__init__(api_url, api_key or "", max_connections)
         self.model_name = model_name or "gpt-4o"
-        self.rate_card = ComputeRateContract(
-            cost_per_million_input_tokens=5,
-            cost_per_million_output_tokens=15,
-            magnitude_unit="USD",
-        )
+        self.rate_card = {
+            "cost_per_million_input_tokens": 5,
+            "cost_per_million_output_tokens": 15,
+            "magnitude_unit": "USD",
+        }
         # Pre-load the encoding for the model
         try:
             self._encoding = tiktoken.encoding_for_model(self.model_name)
@@ -85,7 +85,7 @@ class OpenAIAdapter(BaseHttpAdapter):
                 )
         return openai_tools
 
-    async def apply_peft_adapters(self, adapters: list[PeftAdapterContract]) -> None:
+    async def apply_peft_adapters(self, adapters: list[Any]) -> None:
         if not adapters:
             return
 
@@ -144,7 +144,7 @@ class OpenAIAdapter(BaseHttpAdapter):
         self,
         payload: dict[str, Any],
         headers: dict[str, str],
-    ) -> AsyncGenerator[tuple[str, dict[str, int], LatentScratchpadReceipt | None]]:
+    ) -> AsyncGenerator[tuple[str, dict[str, int], Any | None]]:
         # Accumulators for native tool calls
         tool_name = ""
         tool_args_str = ""

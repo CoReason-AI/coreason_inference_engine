@@ -100,7 +100,7 @@ class BaseHttpAdapter(LLMAdapterProtocol):
         logit_biases: dict[int, float] | None = None,
         max_tokens: int | None = None,
         **kwargs: Any,
-    ) -> AsyncGenerator[tuple[str, dict[str, int], Any | None], None]:
+    ) -> AsyncGenerator[tuple[str, dict[str, int], Any | None]]:
         """
         Yields chunked string deltas and an optional usage dictionary.
         The final yield MUST contain the {"input_tokens": x, "output_tokens": y} mapping.
@@ -124,7 +124,7 @@ class BaseHttpAdapter(LLMAdapterProtocol):
 
     async def _stream_response(
         self, payload: dict[str, Any], headers: dict[str, str]
-    ) -> AsyncGenerator[tuple[str, dict[str, int], Any | None], None]:
+    ) -> AsyncGenerator[tuple[str, dict[str, int], Any | None]]:
         # We must use client.stream
         async with self.client.stream("POST", self.api_url, json=payload, headers=headers) as response:
             response.raise_for_status()

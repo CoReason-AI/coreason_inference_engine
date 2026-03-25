@@ -11,7 +11,6 @@ import contextlib
 import re
 from typing import Any
 
-
 type TelemetryEvent = Any
 
 

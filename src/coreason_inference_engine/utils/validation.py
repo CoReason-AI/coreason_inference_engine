@@ -7,8 +7,8 @@
 # Commercial use beyond a 30-day trial requires a separate license.
 
 
-
 from typing import Any
+
 from pydantic import BaseModel
 
 
@@ -25,7 +25,13 @@ def generate_correction_prompt(error: Exception, target_node_id: str, fault_id: 
     remediation_prompts = []
 
     if not hasattr(error, "errors") or not callable(error.errors):
-        return {"type": "system2_remediation", "fault_id": fault_id, "target_node_id": target_node_id, "failing_pointers": ["/"], "remediation_prompt": str(error)}
+        return {
+            "type": "system2_remediation",
+            "fault_id": fault_id,
+            "target_node_id": target_node_id,
+            "failing_pointers": ["/"],
+            "remediation_prompt": str(error),
+        }
     for err in error.errors():
         loc_path = "".join(f"/{item!s}" for item in err["loc"]) if err["loc"] else "/"
         err_type = str(err.get("type", "unknown"))
@@ -43,4 +49,10 @@ def generate_correction_prompt(error: Exception, target_node_id: str, fault_id: 
 
     combined_prompt = " ".join(remediation_prompts) if remediation_prompts else "Unknown schema validation error."
 
-    return {"type": "system2_remediation", "fault_id": fault_id, "target_node_id": target_node_id, "failing_pointers": failing_pointers or ["/"], "remediation_prompt": combined_prompt}
+    return {
+        "type": "system2_remediation",
+        "fault_id": fault_id,
+        "target_node_id": target_node_id,
+        "failing_pointers": failing_pointers or ["/"],
+        "remediation_prompt": combined_prompt,
+    }

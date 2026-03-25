@@ -12,6 +12,7 @@ from collections.abc import AsyncGenerator
 from typing import Any
 
 import tiktoken
+
 from coreason_inference_engine.interfaces import LLMAdapterProtocol
 
 
@@ -34,11 +35,11 @@ class LocalVLLMAdapter(LLMAdapterProtocol):
 
     def __init__(self, model_name: str = "local-vllm-model") -> None:
         self.model_name = model_name
-        self.rate_card = dict(
-            cost_per_million_input_tokens=0.0,
-            cost_per_million_output_tokens=0.0,
-            magnitude_unit="USD",
-        )
+        self.rate_card = {
+            "cost_per_million_input_tokens": 0.0,
+            "cost_per_million_output_tokens": 0.0,
+            "magnitude_unit": "USD",
+        }
         try:
             self._encoding = tiktoken.encoding_for_model(model_name)
         except KeyError:
@@ -74,7 +75,7 @@ class LocalVLLMAdapter(LLMAdapterProtocol):
             return
         # Mocking the PEFT swap for now, typically handled by vLLM engine API
 
-    def register_sae_firewall_hooks(self, firewalls: list[SaeLatentPolicy], model: Any) -> list[Any]:
+    def register_sae_firewall_hooks(self, firewalls: list[Any], model: Any) -> list[Any]:
         """
         Registers PyTorch forward hooks on the model's specified transformer layers to read
         internal residual stream activation tensors.
@@ -92,7 +93,7 @@ class LocalVLLMAdapter(LLMAdapterProtocol):
 
         for policy in firewalls:
 
-            def get_hook(p: SaeLatentPolicy) -> Any:
+            def get_hook(p: Any) -> Any:
                 def hook_fn(_module: Any, _input_tensor: Any, output_tensor: Any) -> Any:
                     # Realistic PyTorch implementation for tensor extraction
                     _activation = output_tensor[0] if isinstance(output_tensor, tuple) else output_tensor
@@ -244,17 +245,17 @@ class LocalVLLMAdapter(LLMAdapterProtocol):
             # Yield Any failure inside Any
             branch_id = f"branch_{uuid.uuid4().hex[:8]}"
             content_hash = hashlib.sha256(b"sae_violation_trace").hexdigest()
-            branch = dict(
-                branch_id=branch_id,
-                parent_branch_id=None,
-                latent_content_hash=content_hash,
-                prm_score=0.0,
-            )
-            receipt = dict(
-                trace_id=f"trace_{uuid.uuid4().hex[:8]}",
-                explored_branches=[branch],
-                discarded_branches=[branch.branch_id],
-                resolution_branch_id=None,
-                total_latent_tokens=1,
-            )
+            branch = {
+                "branch_id": branch_id,
+                "parent_branch_id": None,
+                "latent_content_hash": content_hash,
+                "prm_score": 0.0,
+            }
+            receipt = {
+                "trace_id": f"trace_{uuid.uuid4().hex[:8]}",
+                "explored_branches": [branch],
+                "discarded_branches": [branch["branch_id"]],
+                "resolution_branch_id": None,
+                "total_latent_tokens": 1,
+            }
             yield "", {"input_tokens": 0, "output_tokens": 0}, receipt

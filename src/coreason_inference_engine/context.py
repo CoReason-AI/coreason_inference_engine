@@ -9,7 +9,6 @@
 import json
 from typing import Any, Literal
 
-
 from coreason_inference_engine.utils.logger import logger
 
 ProviderMode = Literal["standard", "anthropic", "o1"]
@@ -38,11 +37,17 @@ class ContextHydrator:
         system_prompt = node.get("description", "") if isinstance(node, dict) else getattr(node, "description", "")
 
         # AGENT INSTRUCTION: Dynamically translate CognitiveStateProfile mathematical constraints
-        baseline_cognitive_state = node.get("baseline_cognitive_state") if isinstance(node, dict) else getattr(node, "baseline_cognitive_state", None)
+        baseline_cognitive_state = (
+            node.get("baseline_cognitive_state")
+            if isinstance(node, dict)
+            else getattr(node, "baseline_cognitive_state", None)
+        )
         if baseline_cognitive_state:
             state = baseline_cognitive_state
-            system_prompt += f"\nUrgency Index: {state.get('urgency_index') if isinstance(state, dict) else getattr(state, 'urgency_index', None)}"
-            system_prompt += f"\nCaution Index: {state.get('caution_index') if isinstance(state, dict) else getattr(state, 'caution_index', None)}"
+            urgency = state.get('urgency_index') if isinstance(state, dict) else getattr(state, 'urgency_index', None)
+            system_prompt += f"\nUrgency Index: {urgency}"
+            caution = state.get('caution_index') if isinstance(state, dict) else getattr(state, 'caution_index', None)
+            system_prompt += f"\nCaution Index: {caution}"
 
         if self.provider_mode == "o1":
             # o1/o3 deprecate system role, use developer/user instead
@@ -54,16 +59,28 @@ class ContextHydrator:
         quarantined_event_ids: set[str] = set()
 
         # Extract defeasible cascades from the ledger
-        active_cascades = ledger.get("active_cascades", []) if isinstance(ledger, dict) else getattr(ledger, "active_cascades", [])
+        active_cascades = (
+            ledger.get("active_cascades", []) if isinstance(ledger, dict) else getattr(ledger, "active_cascades", [])
+        )
         if active_cascades:
             for cascade in active_cascades:
-                quarantined_event_ids.update(cascade.get("quarantined_event_ids", []) if isinstance(cascade, dict) else getattr(cascade, "quarantined_event_ids", []))
+                quarantined_event_ids.update(
+                    cascade.get("quarantined_event_ids", [])
+                    if isinstance(cascade, dict)
+                    else getattr(cascade, "quarantined_event_ids", [])
+                )
 
         # Extract active rollbacks from the ledger
-        active_rollbacks = ledger.get("active_rollbacks", []) if isinstance(ledger, dict) else getattr(ledger, "active_rollbacks", [])
+        active_rollbacks = (
+            ledger.get("active_rollbacks", []) if isinstance(ledger, dict) else getattr(ledger, "active_rollbacks", [])
+        )
         if active_rollbacks:
             for rollback in active_rollbacks:
-                invalidated_node_ids = rollback.get("invalidated_node_ids", []) if isinstance(rollback, dict) else getattr(rollback, "invalidated_node_ids", [])
+                invalidated_node_ids = (
+                    rollback.get("invalidated_node_ids", [])
+                    if isinstance(rollback, dict)
+                    else getattr(rollback, "invalidated_node_ids", [])
+                )
                 if invalidated_node_ids:
                     quarantined_event_ids.update(invalidated_node_ids)
 
@@ -74,7 +91,9 @@ class ContextHydrator:
             typed_event: Any = event
 
             # Handle Event Exclusion
-            event_id = typed_event.get("event_id") if isinstance(typed_event, dict) else getattr(typed_event, "event_id", None)
+            event_id = (
+                typed_event.get("event_id") if isinstance(typed_event, dict) else getattr(typed_event, "event_id", None)
+            )
             if event_id in quarantined_event_ids:
                 logger.debug("Quarantined event masked from context", event_id=event_id)
                 continue
@@ -135,7 +154,9 @@ class ContextHydrator:
                         }
                     )
 
-            elif isinstance(typed_event, dict) and typed_event.get("type") == "continuous_observation_stream":  # pragma: no cover
+            elif (
+                isinstance(typed_event, dict) and typed_event.get("type") == "continuous_observation_stream"
+            ):  # pragma: no cover
                 buffer_content = "\n".join(str(token) for token in typed_event.get("token_buffer", []))
                 messages.append({"role": "user", "content": buffer_content})
 

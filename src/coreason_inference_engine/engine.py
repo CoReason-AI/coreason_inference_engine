@@ -843,7 +843,7 @@ class InferenceEngine:
 
                     # CRITICAL: Pass exact DID string (node_id) to prevent remediation crash
                     remediation = generate_correction_prompt(error=e, target_node_id=node_id, fault_id=fault_id)
-                    remediation_dict = remediation.model_dump()
+                    remediation_dict = remediation if isinstance(remediation, dict) else remediation.model_dump()
 
                     print(
                         f"\\n\\n=========== RAW LLM FALLBACK ===========\\n"

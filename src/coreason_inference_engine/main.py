@@ -16,11 +16,6 @@ from typing import Any
 
 import typer
 import uvicorn
-from coreason_manifest.spec.ontology import (
-    ActionSpaceManifest,
-    AgentNodeProfile,
-    EpistemicLedgerState,
-)
 from fastapi import FastAPI, HTTPException, Request
 
 from coreason_inference_engine.adapters.anthropic_adapter import AnthropicAdapter
@@ -47,19 +42,19 @@ class InferenceRPCServer:
         async def generate_intent(request: Request) -> Any:
             try:
                 data = await request.json()
-                node = AgentNodeProfile.model_validate(data.get("node"))
-                ledger = EpistemicLedgerState.model_validate(data.get("ledger"))
-                action_space = ActionSpaceManifest.model_validate(data.get("action_space"))
+                node = data.get("node")
+                ledger = data.get("ledger")
+                action_space = data.get("action_space")
                 node_id = data.get("node_id")
 
                 if not node_id:
                     raise HTTPException(status_code=400, detail="node_id is required")
 
                 intent, receipt, scratchpad, cognitive_receipt = await self.engine.generate_intent(
-                    node=node.model_dump(),
-                    ledger=ledger.model_dump(),
+                    node=node if isinstance(node, dict) else node.model_dump(),
+                    ledger=ledger if isinstance(ledger, dict) else ledger.model_dump(),
                     node_id=node_id,
-                    action_space=action_space.model_dump(),
+                    action_space=action_space if isinstance(action_space, dict) else action_space.model_dump(),
                 )
 
                 return {

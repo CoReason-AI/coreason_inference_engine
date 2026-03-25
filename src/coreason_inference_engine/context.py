@@ -9,16 +9,6 @@
 import json
 from typing import Any, Literal
 
-from coreason_manifest.spec.ontology import (
-    AgentNodeProfile,
-    AnyStateEvent,
-    EpistemicLedgerState,
-    ObservationEvent,
-    StateMutationIntent,
-    System2RemediationIntent,
-    ToolInvocationEvent,
-)
-
 from coreason_inference_engine.utils.logger import logger
 
 ProviderMode = Literal["standard", "anthropic", "o1"]
@@ -30,7 +20,7 @@ class ContextHydrator:
     def __init__(self, provider_mode: ProviderMode = "standard") -> None:
         self.provider_mode = provider_mode
 
-    def compile(self, node: AgentNodeProfile, ledger: EpistemicLedgerState) -> list[dict[str, Any]]:
+    def compile(self, node: Any, ledger: Any) -> list[dict[str, Any]]:
         """
         Flattens the ledger into a conversational array.
 
@@ -44,13 +34,20 @@ class ContextHydrator:
         messages: list[dict[str, Any]] = []
 
         # Anchor System Prompt
-        system_prompt = node.description
+        system_prompt = node.get("description", "") if isinstance(node, dict) else getattr(node, "description", "")
 
         # AGENT INSTRUCTION: Dynamically translate CognitiveStateProfile mathematical constraints
-        if node.baseline_cognitive_state:
-            state = node.baseline_cognitive_state
-            system_prompt += f"\nUrgency Index: {state.urgency_index}"
-            system_prompt += f"\nCaution Index: {state.caution_index}"
+        baseline_cognitive_state = (
+            node.get("baseline_cognitive_state")
+            if isinstance(node, dict)
+            else getattr(node, "baseline_cognitive_state", None)
+        )
+        if baseline_cognitive_state:
+            state = baseline_cognitive_state
+            urgency = state.get("urgency_index") if isinstance(state, dict) else getattr(state, "urgency_index", None)
+            system_prompt += f"\nUrgency Index: {urgency}"
+            caution = state.get("caution_index") if isinstance(state, dict) else getattr(state, "caution_index", None)
+            system_prompt += f"\nCaution Index: {caution}"
 
         if self.provider_mode == "o1":
             # o1/o3 deprecate system role, use developer/user instead
@@ -62,91 +59,167 @@ class ContextHydrator:
         quarantined_event_ids: set[str] = set()
 
         # Extract defeasible cascades from the ledger
-        if ledger.active_cascades:
-            for cascade in ledger.active_cascades:
-                quarantined_event_ids.update(cascade.quarantined_event_ids)
+        active_cascades = (
+            ledger.get("active_cascades", []) if isinstance(ledger, dict) else getattr(ledger, "active_cascades", [])
+        )
+        if active_cascades:
+            for cascade in active_cascades:
+                quarantined_event_ids.update(
+                    cascade.get("quarantined_event_ids", [])
+                    if isinstance(cascade, dict)
+                    else getattr(cascade, "quarantined_event_ids", [])
+                )
 
         # Extract active rollbacks from the ledger
-        if ledger.active_rollbacks:
-            for rollback in ledger.active_rollbacks:
-                if rollback.invalidated_node_ids:
-                    quarantined_event_ids.update(rollback.invalidated_node_ids)
+        active_rollbacks = (
+            ledger.get("active_rollbacks", []) if isinstance(ledger, dict) else getattr(ledger, "active_rollbacks", [])
+        )
+        if active_rollbacks:
+            for rollback in active_rollbacks:
+                invalidated_node_ids = (
+                    rollback.get("invalidated_node_ids", [])
+                    if isinstance(rollback, dict)
+                    else getattr(rollback, "invalidated_node_ids", [])
+                )
+                if invalidated_node_ids:
+                    quarantined_event_ids.update(invalidated_node_ids)
 
         # Iterate Chronologically and Map Roles
-        for event in ledger.history:
+        history = ledger.get("history", []) if isinstance(ledger, dict) else getattr(ledger, "history", [])
+        for event in history:
             # Type hinting the event
-            typed_event: AnyStateEvent = event
+            typed_event: Any = event
 
             # Handle Event Exclusion
-            event_id = getattr(typed_event, "event_id", None)
+            event_id = (
+                (
+                    typed_event.get("event_id")
+                    if isinstance(typed_event, dict)
+                    else getattr(typed_event, "event_id", None)
+                )
+                if isinstance(typed_event, dict)
+                else getattr(typed_event, "event_id", None)
+            )
             if event_id in quarantined_event_ids:
                 logger.debug("Quarantined event masked from context", event_id=event_id)
                 continue
 
             # Standard Role Mapping
-            if isinstance(typed_event, ObservationEvent):
+            if (isinstance(typed_event, dict) and typed_event.get("type") == "observation") or type(
+                typed_event
+            ).__name__ == "ObservationEvent":
                 # We need to map ObservationEvent payloads into strings.
                 content_dict = {
                     k: v.model_dump() if hasattr(v, "model_dump") and v is not None else v
-                    for k, v in typed_event.payload.items()
+                    for k, v in (
+                        typed_event.get("payload", {})
+                        if isinstance(typed_event, dict)
+                        else getattr(typed_event, "payload", {})
+                    ).items()
                 }
                 content_str = json.dumps(content_dict)
 
                 # If this observation is tied to a tool invocation, map as tool response
-                if typed_event.triggering_invocation_id:
+                if (
+                    typed_event.get("triggering_invocation_id")
+                    if isinstance(typed_event, dict)
+                    else getattr(typed_event, "triggering_invocation_id", None)
+                ):
                     messages.append(
                         {
                             "role": "tool",
-                            "tool_call_id": typed_event.triggering_invocation_id,
+                            "tool_call_id": (
+                                typed_event.get("triggering_invocation_id")
+                                if isinstance(typed_event, dict)
+                                else getattr(typed_event, "triggering_invocation_id", None)
+                            ),
                             "content": content_str,
                         }
                     )
                 else:
                     messages.append({"role": "user", "content": content_str})
 
-            elif isinstance(typed_event, ToolInvocationEvent):
+            elif (isinstance(typed_event, dict) and typed_event.get("type") == "tool_invocation") or type(
+                typed_event
+            ).__name__ == "ToolInvocationEvent":
                 messages.append(
                     {
                         "role": "assistant",
                         "tool_calls": [
                             {
-                                "id": typed_event.event_id,
+                                "id": (
+                                    typed_event.get("event_id")
+                                    if isinstance(typed_event, dict)
+                                    else getattr(typed_event, "event_id", None)
+                                ),
                                 "type": "function",
                                 "function": {
-                                    "name": typed_event.tool_name,
-                                    "arguments": json.dumps(typed_event.parameters),
+                                    "name": (
+                                        typed_event.get("tool_name")
+                                        if isinstance(typed_event, dict)
+                                        else getattr(typed_event, "tool_name", None)
+                                    ),
+                                    "arguments": json.dumps(
+                                        typed_event.get("parameters", {})
+                                        if isinstance(typed_event, dict)
+                                        else getattr(typed_event, "parameters", {})
+                                    ),
                                 },
                             }
                         ],
                     }
                 )
 
-            elif isinstance(typed_event, System2RemediationIntent):
+            elif (isinstance(typed_event, dict) and typed_event.get("type") == "system2_remediation") or type(
+                typed_event
+            ).__name__ == "System2RemediationIntent":
                 # Map System2RemediationIntent to the system role as a mathematical reprimand
                 # The target_node_id check is implicit as it's targeted for this execution branch
                 if self.provider_mode == "o1":
                     messages.append(
                         {
                             "role": "developer",
-                            "content": typed_event.model_dump_json(),
+                            "content": json.dumps(
+                                typed_event if isinstance(typed_event, dict) else typed_event.model_dump()
+                            ),
                         }
                     )
                 else:
                     messages.append(
                         {
                             "role": "system",
-                            "content": typed_event.model_dump_json(),
+                            "content": json.dumps(
+                                typed_event if isinstance(typed_event, dict) else typed_event.model_dump()
+                            ),
                         }
                     )
 
-            elif type(typed_event).__name__ == "ContinuousObservationStream":  # pragma: no cover
-                buffer_content = "\n".join(str(token) for token in getattr(typed_event, "token_buffer", []))
+            elif (isinstance(typed_event, dict) and typed_event.get("type") == "continuous_observation_stream") or type(
+                typed_event
+            ).__name__ == "ContinuousObservationStream":  # pragma: no cover
+                buffer_content = "\n".join(
+                    str(token)
+                    for token in (
+                        typed_event.get("token_buffer", [])
+                        if isinstance(typed_event, dict)
+                        else getattr(typed_event, "token_buffer", [])
+                    )
+                )
                 messages.append({"role": "user", "content": buffer_content})
 
-            elif isinstance(typed_event, StateMutationIntent):  # pragma: no cover
+            elif (isinstance(typed_event, dict) and typed_event.get("type") == "state_mutation") or type(
+                typed_event
+            ).__name__ == "StateMutationIntent":  # pragma: no cover
                 # Ensure the LLM remembers its own previously generated JSON objects
                 # so it maintains context of its continuous intent projection pattern.
-                messages.append({"role": "assistant", "content": typed_event.model_dump_json()})
+                messages.append(
+                    {
+                        "role": "assistant",
+                        "content": json.dumps(
+                            typed_event if isinstance(typed_event, dict) else typed_event.model_dump()
+                        ),
+                    }
+                )
 
         if self.provider_mode == "anthropic":
             messages = self._apply_anthropic_grammar(messages)

@@ -16,11 +16,6 @@ from typing import Any
 
 import typer
 import uvicorn
-from coreason_manifest.spec.ontology import (
-    ActionSpaceManifest,
-    AgentNodeProfile,
-    EpistemicLedgerState,
-)
 from fastapi import FastAPI, HTTPException, Request
 
 from coreason_inference_engine.adapters.anthropic_adapter import AnthropicAdapter

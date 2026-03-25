@@ -11,7 +11,6 @@ from collections.abc import AsyncGenerator
 from typing import Any
 
 import tiktoken
-from coreason_manifest.spec.ontology import ComputeRateContract, LatentScratchpadReceipt
 
 from coreason_inference_engine.adapters.http_adapter import BaseHttpAdapter
 
@@ -27,7 +26,7 @@ class AnthropicAdapter(BaseHttpAdapter):
     ) -> None:
         super().__init__(api_url, api_key or "", max_connections)
         self.model_name = model_name or "claude-3-5-sonnet-20241022"
-        self.rate_card = ComputeRateContract(
+        self.rate_card = dict(
             cost_per_million_input_tokens=3,
             cost_per_million_output_tokens=15,
             magnitude_unit="USD",
@@ -165,7 +164,7 @@ class AnthropicAdapter(BaseHttpAdapter):
         self,
         payload: dict[str, Any],
         headers: dict[str, str],  # noqa: ARG002
-    ) -> AsyncGenerator[tuple[str, dict[str, int], LatentScratchpadReceipt | None]]:
+    ) -> AsyncGenerator[tuple[str, dict[str, int], Any | None]]:
         anthropic_headers = {
             "x-api-key": self.api_key,
             "anthropic-version": "2023-06-01",

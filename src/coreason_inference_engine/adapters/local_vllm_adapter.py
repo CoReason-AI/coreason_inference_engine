@@ -12,22 +12,13 @@ from collections.abc import AsyncGenerator
 from typing import Any
 
 import tiktoken
-from coreason_manifest.spec.ontology import (
-    CognitiveFormatContract,
-    ComputeRateContract,
-    LatentScratchpadReceipt,
-    PeftAdapterContract,
-    SaeLatentPolicy,
-    ThoughtBranchState,
-)
-
 from coreason_inference_engine.interfaces import LLMAdapterProtocol
 
 
 class SAELatentViolationError(Exception):
     """Raised when an internal activation vector exceeds a known hallucination feature index threshold."""
 
-    def __init__(self, policy: SaeLatentPolicy, activation_val: float) -> None:
+    def __init__(self, policy: Any, activation_val: float) -> None:
         self.policy = policy
         self.activation_val = activation_val
         super().__init__(
@@ -43,7 +34,7 @@ class LocalVLLMAdapter(LLMAdapterProtocol):
 
     def __init__(self, model_name: str = "local-vllm-model") -> None:
         self.model_name = model_name
-        self.rate_card = ComputeRateContract(
+        self.rate_card = dict(
             cost_per_million_input_tokens=0.0,
             cost_per_million_output_tokens=0.0,
             magnitude_unit="USD",
@@ -77,7 +68,7 @@ class LocalVLLMAdapter(LLMAdapterProtocol):
         """Translates JSON Schema dictionaries into the provider's native tool array format."""
         return schemas
 
-    async def apply_peft_adapters(self, adapters: list[PeftAdapterContract]) -> None:
+    async def apply_peft_adapters(self, adapters: list[Any]) -> None:
         """Hot-swaps declarative LoRA/PEFT weights into VRAM on compatible local backends."""
         if not adapters:
             return
@@ -214,13 +205,13 @@ class LocalVLLMAdapter(LLMAdapterProtocol):
         logit_biases: dict[int, float] | None = None,  # noqa: ARG002
         max_tokens: int | None = None,
         **kwargs: Any,
-    ) -> AsyncGenerator[tuple[str, dict[str, int], LatentScratchpadReceipt | None]]:
+    ) -> AsyncGenerator[tuple[str, dict[str, int], Any | None]]:
         """
-        Yields chunked string deltas, an optional usage dictionary, and optionally a LatentScratchpadReceipt
+        Yields chunked string deltas, an optional usage dictionary, and optionally a Any
         if generation halts due to a latent firewall violation.
         """
         _ = kwargs.get("latent_firewalls")
-        format_contract: CognitiveFormatContract | None = kwargs.get("format_contract")
+        format_contract: Any | None = kwargs.get("format_contract")
 
         # We can extract the cognitive format contract regex if passed via context
         regex_pattern = format_contract.final_answer_regex if format_contract else ".*"
@@ -250,16 +241,16 @@ class LocalVLLMAdapter(LLMAdapterProtocol):
             # Simulated return if vLLM engine isn't initialized
             yield "{}", {"input_tokens": 10, "output_tokens": 10}, None
         except SAELatentViolationError:  # pragma: no cover
-            # Yield ThoughtBranchState failure inside LatentScratchpadReceipt
+            # Yield Any failure inside Any
             branch_id = f"branch_{uuid.uuid4().hex[:8]}"
             content_hash = hashlib.sha256(b"sae_violation_trace").hexdigest()
-            branch = ThoughtBranchState(
+            branch = dict(
                 branch_id=branch_id,
                 parent_branch_id=None,
                 latent_content_hash=content_hash,
                 prm_score=0.0,
             )
-            receipt = LatentScratchpadReceipt(
+            receipt = dict(
                 trace_id=f"trace_{uuid.uuid4().hex[:8]}",
                 explored_branches=[branch],
                 discarded_branches=[branch.branch_id],

@@ -118,7 +118,6 @@ def mock_validate_payload() -> Any:
             CognitiveStateProfile,
             DocumentLayoutManifest,
             StateMutationIntent,
-            System2RemediationIntent,
         )
         from pydantic import TypeAdapter
 
@@ -232,6 +231,11 @@ async def test_ijson_early_termination(
     # First attempt: invalid key (triggers early termination). Second attempt: valid.
     adapter = StreamingAdapter()
     engine = InferenceEngine(adapter)
+    # Inject a mock schema so the stream validator doesn't short-circuit to "allow everything"
+    engine._cached_schema = {
+        "type": "object",
+        "$defs": {"AnyIntent": {"type": "object", "properties": {"valid_key": {"type": "string"}}}}
+    }
 
     intent, _receipt, _, _ = await engine.generate_intent(
         node=mock_node.model_dump(),
@@ -239,8 +243,12 @@ async def test_ijson_early_termination(
         node_id="did:test:1",
         action_space=mock_action_space.model_dump(),
     )
-    assert isinstance(intent, System2RemediationIntent)
-    assert "CRITICAL CONTRACT BREACH" in intent.get("remediation_prompt")
+
+    intent_type = intent.get("type") if isinstance(intent, dict) else getattr(intent, "type", None)
+    assert intent_type == "system2_remediation"
+
+    prompt = intent.get("remediation_prompt") if isinstance(intent, dict) else getattr(intent, "remediation_prompt", "")
+    assert "CRITICAL CONTRACT BREACH" in prompt
     # It should have called aclose on the stream
     assert getattr(adapter, "aclose_called", False)
 
@@ -426,15 +434,15 @@ async def test_remediation_loop_failure(
     adapter = DummyAdapter(responses=[invalid_intent_json, invalid_intent_json, invalid_intent_json])
     engine = InferenceEngine(adapter)
 
-    intent, _receipt, _, _ = await engine.generate_intent(
-        node=mock_node.model_dump(),
-        ledger=mock_ledger.model_dump(),
-        node_id="did:test:1",
-        action_space=mock_action_space.model_dump(),
-    )
+    with pytest.raises(InferenceConvergenceError, match=r"LLM failed to converge after 2 attempts\."):
+        await engine.generate_intent(
+            node=mock_node.model_dump(),
+            ledger=mock_ledger.model_dump(),
+            node_id="did:test:1",
+            action_space=mock_action_space.model_dump(),
+        )
 
-    assert getattr(intent, "fault_id", None) is not None
-    assert adapter.call_count == 1
+    assert adapter.call_count == 2
 
 
 class MockAsyncGenerator:

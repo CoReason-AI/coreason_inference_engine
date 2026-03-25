@@ -9,7 +9,6 @@ from coreason_manifest.spec.ontology import (
     EpistemicLedgerState,
     PermissionBoundaryPolicy,
     SideEffectProfile,
-    ToolInvocationEvent,
     ToolManifest,
 )
 
@@ -168,8 +167,11 @@ async def test_hallucinated_tool_escalation(
     )
 
     # Verify that the valid intent was eventually yielded
-    assert isinstance(intent, ToolInvocationEvent)
-    assert intent.tool_name == "valid_tool"
+    intent_type = intent.get("type") if isinstance(intent, dict) else getattr(intent, "type", None)
+    assert intent_type == "tool_invocation"
+
+    tool_name = intent.get("tool_name") if isinstance(intent, dict) else getattr(intent, "tool_name", None)
+    assert tool_name == "valid_tool"
 
     # Attempt counter should be 2 because the first attempt failed validation
     assert attempt_counter == 2

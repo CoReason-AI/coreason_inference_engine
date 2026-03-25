@@ -146,12 +146,14 @@ class LocalInformationalIntent(BaseModel):
     message: str
     timeout_action: str | None = None
 
+
 class LocalLogEvent(BaseModel):
     model_config = ConfigDict(extra="ignore")
     type: str = "log_event"
     level: str
     message: str
     context_profile: dict[str, Any] | None = None
+
 
 LocalAnyIntent = LocalInformationalIntent | LocalLogEvent
 

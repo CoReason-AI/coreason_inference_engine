@@ -8,7 +8,7 @@
 
 
 from coreason_manifest.spec.ontology import System2RemediationIntent
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel
 
 
 class ConstrainedDecodingPolicy(BaseModel):
@@ -25,10 +25,7 @@ def generate_correction_prompt(error: Exception, target_node_id: str, fault_id: 
 
     if not hasattr(error, "errors"):
         return System2RemediationIntent(
-            fault_id=fault_id,
-            target_node_id=target_node_id,
-            failing_pointers=["/"],
-            remediation_prompt=str(error)
+            fault_id=fault_id, target_node_id=target_node_id, failing_pointers=["/"], remediation_prompt=str(error)
         )
     for err in error.errors():
         loc_path = "".join(f"/{item!s}" for item in err["loc"]) if err["loc"] else "/"

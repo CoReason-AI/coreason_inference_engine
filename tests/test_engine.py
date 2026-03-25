@@ -326,8 +326,6 @@ async def test_generate_intent_ttft_concurrency(
             self.spans: list[Any] = []
 
         async def emit(self, event: Any) -> None:
-            from coreason_manifest.spec.ontology import ExecutionSpanReceipt
-
             if isinstance(event, dict) and event.get("type") == "execution_span":
                 self.spans.append(event)
 
@@ -356,7 +354,8 @@ async def test_generate_intent_ttft_concurrency(
     # Ensure all span traces have valid ttft
     for span in emitter.spans:
         assert len(span.get("events", [])) > 0
-        first_token_event = next(e for e in span.get("events", []) if getattr(e, "name", e.get("name")) == "first_token")
+        events = span.get("events", [])
+        first_token_event = next(e for e in events if getattr(e, "name", e.get("name")) == "first_token")
         assert "ttft_nano" in getattr(first_token_event, "attributes", first_token_event.get("attributes", {}))
         ttft = getattr(first_token_event, "attributes", first_token_event.get("attributes", {}))["ttft_nano"]
         assert isinstance(ttft, int)

@@ -18,13 +18,46 @@ class ConstrainedDecodingPolicy(BaseModel):
 
 def generate_correction_prompt(error: Exception, target_node_id: str, fault_id: str) -> dict[str, Any]:
     """
-    Pure functional adapter. Maps a raw Pythonic pydantic.ValidationError into a
+    Pure functional adapter. Maps a raw Pythonic jsonschema.exceptions.ValidationError into a
     language-model-legible System2RemediationIntent without triggering runtime side effects.
     """
+    import jsonschema
+
     failing_pointers = []
     remediation_prompts = []
 
-    if not hasattr(error, "errors") or not callable(error.errors):
+    if isinstance(error, jsonschema.exceptions.ValidationError):
+        # Format the JSON pointer path
+        path = "/" + "/".join(str(p) for p in error.absolute_path) if error.absolute_path else "/"
+        failing_pointers.append(path)
+
+        # Determine error type and message
+        err_validator = error.validator
+        if err_validator == "required":
+            msg = (
+                "The required semantic boundary is completely missing. "
+                "You must project this missing dimension to satisfy the StateContract."
+            )
+        else:
+            msg = error.message
+
+        remediation_prompts.append(msg)
+    elif hasattr(error, "errors") and callable(error.errors):
+        for err in error.errors():
+            loc_path = "".join(f"/{item!s}" for item in err["loc"]) if err["loc"] else "/"
+            err_type = str(err.get("type", "unknown"))
+
+            if err_type == "missing":
+                msg = (
+                    "The required semantic boundary is completely missing. "
+                    "You must project this missing dimension to satisfy the StateContract."
+                )
+            else:
+                msg = str(err.get("msg", "Invalid structural payload."))
+
+            failing_pointers.append(loc_path)
+            remediation_prompts.append(msg)
+    else:
         return {
             "type": "system2_remediation",
             "fault_id": fault_id,
@@ -32,20 +65,6 @@ def generate_correction_prompt(error: Exception, target_node_id: str, fault_id: 
             "failing_pointers": ["/"],
             "remediation_prompt": str(error),
         }
-    for err in error.errors():
-        loc_path = "".join(f"/{item!s}" for item in err["loc"]) if err["loc"] else "/"
-        err_type = str(err.get("type", "unknown"))
-
-        if err_type == "missing":
-            msg = (
-                "The required semantic boundary is completely missing. "
-                "You must project this missing dimension to satisfy the StateContract."
-            )
-        else:
-            msg = str(err.get("msg", "Invalid structural payload."))
-
-        failing_pointers.append(loc_path)
-        remediation_prompts.append(msg)
 
     combined_prompt = " ".join(remediation_prompts) if remediation_prompts else "Unknown schema validation error."
 

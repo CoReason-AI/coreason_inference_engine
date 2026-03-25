@@ -174,7 +174,7 @@ async def test_reflex_fast_path_success(
     )
 
     assert (intent.get("type") if isinstance(intent, dict) else getattr(intent, "type", None)) == "tool_invocation"
-    assert getattr(intent, "tool_name", None) == "fast_tool"
+    assert (intent.get("tool_name") if isinstance(intent, dict) else getattr(intent, "tool_name", None)) == "fast_tool"
     assert adapter.call_count == 1
     assert adapter.max_tokens_received == [150]
     assert len(adapter.tools_projected[0]) == 1
@@ -216,7 +216,7 @@ async def test_reflex_fast_path_fallback_invalid_intent(
     )
 
     assert (intent.get("type") if isinstance(intent, dict) else getattr(intent, "type", None)) == "informational"
-    assert getattr(intent, "message", None) == "Deep thought result"
+    assert (intent.get("message") if isinstance(intent, dict) else getattr(intent, "message", None)) == "Deep thought result"
     assert adapter.call_count == 2
     assert adapter.max_tokens_received == [150, None]
 

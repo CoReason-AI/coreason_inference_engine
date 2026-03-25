@@ -6,7 +6,7 @@
 # For details, see the LICENSE file.
 # Commercial use beyond a 30-day trial requires a separate license.
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -165,3 +165,42 @@ class LocalToolInvocationEvent(BaseModel):
     parameters: dict[str, Any] = Field(default_factory=dict)
     event_id: str | None = None
     timestamp: float | None = None
+
+
+class LocalTokenBurnReceipt(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    type: Literal["token_burn_receipt"] = "token_burn_receipt"
+    event_id: str
+    timestamp: float
+    tool_invocation_id: str
+    input_tokens: int
+    output_tokens: int
+    burn_magnitude: int
+
+
+class LocalLatentScratchpadReceipt(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    type: Literal["latent_scratchpad_receipt"] = "latent_scratchpad_receipt"
+    trace_id: str
+    explored_branches: list[dict[str, Any]]
+    discarded_branches: list[dict[str, Any]]
+    resolution_branch_id: str
+    total_latent_tokens: int
+
+
+class LocalSystemFaultEvent(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    type: Literal["system_fault"] = "system_fault"
+    event_id: str
+    timestamp: float
+
+
+class LocalCognitiveRewardReceipt(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    type: Literal["cognitive_reward_receipt"] = "cognitive_reward_receipt"
+    event_id: str
+    timestamp: float
+    source_generation_id: str
+    extracted_axioms: list[Any]
+    calculated_r_path: float
+    total_advantage_score: float

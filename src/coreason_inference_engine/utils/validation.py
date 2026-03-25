@@ -7,9 +7,12 @@
 # Commercial use beyond a 30-day trial requires a separate license.
 
 
+import json
 from typing import Any
 
 from pydantic import BaseModel
+
+from coreason_inference_engine.adapters.dto import LocalSystem2RemediationIntent
 
 
 class ConstrainedDecodingPolicy(BaseModel):
@@ -68,10 +71,10 @@ def generate_correction_prompt(error: Exception, target_node_id: str, fault_id: 
 
     combined_prompt = " ".join(remediation_prompts) if remediation_prompts else "Unknown schema validation error."
 
-    return {
-        "type": "system2_remediation",
-        "fault_id": fault_id,
-        "target_node_id": target_node_id,
-        "failing_pointers": failing_pointers or ["/"],
-        "remediation_prompt": combined_prompt,
-    }
+    local_intent = LocalSystem2RemediationIntent(
+        fault_id=fault_id,
+        target_node_id=target_node_id,
+        failing_pointers=failing_pointers or ["/"],
+        remediation_prompt=combined_prompt,
+    )
+    return dict(json.loads(local_intent.model_dump_json(exclude_none=True)))

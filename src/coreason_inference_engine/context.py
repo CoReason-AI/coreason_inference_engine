@@ -44,9 +44,9 @@ class ContextHydrator:
         )
         if baseline_cognitive_state:
             state = baseline_cognitive_state
-            urgency = state.get('urgency_index') if isinstance(state, dict) else getattr(state, 'urgency_index', None)
+            urgency = state.get("urgency_index") if isinstance(state, dict) else getattr(state, "urgency_index", None)
             system_prompt += f"\nUrgency Index: {urgency}"
-            caution = state.get('caution_index') if isinstance(state, dict) else getattr(state, 'caution_index', None)
+            caution = state.get("caution_index") if isinstance(state, dict) else getattr(state, "caution_index", None)
             system_prompt += f"\nCaution Index: {caution}"
 
         if self.provider_mode == "o1":

@@ -56,17 +56,17 @@ class InferenceRPCServer:
                     raise HTTPException(status_code=400, detail="node_id is required")
 
                 intent, receipt, scratchpad, cognitive_receipt = await self.engine.generate_intent(
-                    node=node,
-                    ledger=ledger,
+                    node=node.model_dump(),
+                    ledger=ledger.model_dump(),
                     node_id=node_id,
-                    action_space=action_space,
+                    action_space=action_space.model_dump(),
                 )
 
                 return {
-                    "intent": intent.model_dump() if intent else None,
-                    "receipt": receipt.model_dump() if receipt else None,
-                    "scratchpad": scratchpad.model_dump() if scratchpad else None,
-                    "cognitive_receipt": cognitive_receipt.model_dump() if cognitive_receipt else None,
+                    "intent": intent or None,
+                    "receipt": receipt or None,
+                    "scratchpad": scratchpad or None,
+                    "cognitive_receipt": cognitive_receipt or None,
                 }
             except HTTPException:
                 raise

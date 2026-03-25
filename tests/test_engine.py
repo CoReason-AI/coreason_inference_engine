@@ -118,7 +118,6 @@ def mock_validate_payload() -> Any:
             CognitiveStateProfile,
             DocumentLayoutManifest,
             StateMutationIntent,
-            System2RemediationIntent,
         )
         from pydantic import TypeAdapter
 
@@ -239,7 +238,8 @@ async def test_ijson_early_termination(
         node_id="did:test:1",
         action_space=mock_action_space.model_dump(),
     )
-    assert isinstance(intent, System2RemediationIntent)
+    assert isinstance(intent, dict)
+    assert intent.get("type") == "system2_remediation"
     assert "CRITICAL CONTRACT BREACH" in intent.get("remediation_prompt")
     # It should have called aclose on the stream
     assert getattr(adapter, "aclose_called", False)
@@ -426,15 +426,14 @@ async def test_remediation_loop_failure(
     adapter = DummyAdapter(responses=[invalid_intent_json, invalid_intent_json, invalid_intent_json])
     engine = InferenceEngine(adapter)
 
-    intent, _receipt, _, _ = await engine.generate_intent(
-        node=mock_node.model_dump(),
-        ledger=mock_ledger.model_dump(),
-        node_id="did:test:1",
-        action_space=mock_action_space.model_dump(),
-    )
-
-    assert getattr(intent, "fault_id", None) is not None
-    assert adapter.call_count == 1
+    with pytest.raises(InferenceConvergenceError, match=r"LLM failed to converge after 2 attempts\."):
+        await engine.generate_intent(
+            node=mock_node.model_dump(),
+            ledger=mock_ledger.model_dump(),
+            node_id="did:test:1",
+            action_space=mock_action_space.model_dump(),
+        )
+    assert adapter.call_count == 2
 
 
 class MockAsyncGenerator:

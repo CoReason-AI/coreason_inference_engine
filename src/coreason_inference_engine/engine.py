@@ -167,7 +167,7 @@ class InferenceEngine:
             # early, we can create a dummy schema object with properties matching the union
             # to satisfy the streaming validation properties extractor.
             if not defs:
-                return {} # Fallback to empty if schema doesn't exist to avoid false-positive early rejection
+                return {}  # Fallback to empty if schema doesn't exist to avoid false-positive early rejection
 
             composite_props = {}
             for k in defs:
@@ -775,9 +775,7 @@ class InferenceEngine:
                     if isinstance(valid_intent, dict) and valid_intent.get("type") == "tool_invocation":
                         allowed_tools_names = {t.get("tool_name") for t in local_action_space.native_tools}
                         if valid_intent.get("tool_name") not in allowed_tools_names:
-                            raise ValidationError(
-                                f"Tool '{valid_intent.get('tool_name')}' not found in actions."
-                            )
+                            raise ValidationError(f"Tool '{valid_intent.get('tool_name')}' not found in actions.")
 
                     # Check for tool invocation ID
                     invocation_cid = (

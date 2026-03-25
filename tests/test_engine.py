@@ -234,7 +234,7 @@ async def test_ijson_early_termination(
     # Inject a mock schema so the stream validator doesn't short-circuit to "allow everything"
     engine._cached_schema = {
         "type": "object",
-        "$defs": {"AnyIntent": {"type": "object", "properties": {"valid_key": {"type": "string"}}}}
+        "$defs": {"AnyIntent": {"type": "object", "properties": {"valid_key": {"type": "string"}}}},
     }
 
     intent, _receipt, _, _ = await engine.generate_intent(
@@ -248,7 +248,8 @@ async def test_ijson_early_termination(
     assert intent_type == "system2_remediation"
 
     prompt = intent.get("remediation_prompt") if isinstance(intent, dict) else getattr(intent, "remediation_prompt", "")
-    assert "CRITICAL CONTRACT BREACH" in prompt
+    assert prompt is not None
+    assert "CRITICAL CONTRACT BREACH" in str(prompt)
     # It should have called aclose on the stream
     assert getattr(adapter, "aclose_called", False)
 

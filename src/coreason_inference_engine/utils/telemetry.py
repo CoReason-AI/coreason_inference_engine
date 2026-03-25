@@ -9,10 +9,9 @@
 import asyncio
 import contextlib
 import re
+from typing import Any
 
-from coreason_manifest.spec.ontology import ExecutionSpanReceipt, InformationFlowPolicy, LogEvent
-
-type TelemetryEvent = ExecutionSpanReceipt | LogEvent
+type TelemetryEvent = Any
 
 
 class TelemetryEmitter:
@@ -25,9 +24,9 @@ class TelemetryEmitter:
         """Asynchronously queues the telemetry event for external collection."""
         await self.queue.put(event)
 
-    def redact_pii(self, payload: str, policy: InformationFlowPolicy | None) -> str:
+    def redact_pii(self, payload: str, policy: Any | None) -> str:
         """
-        Passes the payload string through the InformationFlowPolicy rules
+        Passes the payload string through the Any rules
         to redact sensitive geometric coordinates or secure identifiers.
         """
         if not policy or not policy.active or not policy.rules:

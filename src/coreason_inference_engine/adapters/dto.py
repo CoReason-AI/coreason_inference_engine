@@ -62,6 +62,11 @@ class LocalPermissions(BaseModel):
 
 
 class LocalAgentNodeProfile(BaseModel):
+    description: str | None = None
+    behavioral_directives: str | None = None
+    constraints: list[str] | None = None
+    active_inference_policy: Any | None = None
+    architectural_intent: Any | None = None
     """
     Internal Pydantic model for the inference engine to map Node payloads.
     Silently drops unknown fields.
@@ -102,3 +107,61 @@ class LocalLedgerState(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     history: list[dict[str, Any]] = Field(default_factory=list)
+    active_cascades: list[Any] | None = None
+    active_rollbacks: list[Any] | None = None
+
+
+class LocalStateMutationIntent(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    type: str = "state_mutation"
+    op: str
+    path: str
+    value: Any | None = None
+    from_: str | None = Field(None, alias="from")
+    from_path: str | None = None
+
+
+class LocalCognitiveStateProfileSchema(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    type: str = "cognitive_sync"
+
+
+class LocalSystem2RemediationIntent(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    type: str = "system2_remediation"
+    fault_id: str
+    target_node_id: str
+    failing_pointers: list[str]
+    remediation_prompt: str
+
+
+class LocalDocumentLayoutManifest(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    type: str = "document_layout"
+
+
+class LocalInformationalIntent(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    type: str = "informational"
+    message: str
+    timeout_action: str | None = None
+
+
+class LocalLogEvent(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    type: str = "log_event"
+    level: str
+    message: str
+    context_profile: dict[str, Any] | None = None
+
+
+LocalAnyIntent = LocalInformationalIntent | LocalLogEvent
+
+
+class LocalToolInvocationEvent(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    type: str = "tool_invocation"
+    tool_name: str
+    parameters: dict[str, Any] = Field(default_factory=dict)
+    event_id: str | None = None
+    timestamp: float | None = None

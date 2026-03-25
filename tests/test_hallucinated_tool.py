@@ -55,7 +55,7 @@ def mock_validate_payload() -> Any:
     original = coreason_manifest.utils.algebra.validate_payload
     coreason_manifest.utils.algebra.validate_payload = _mocked_validate
 
-    with patch("coreason_inference_engine.engine.validate_payload", _mocked_validate):
+    with patch("coreason_inference_engine.engine.validate_payload", _mocked_validate, create=True):
         yield
 
     coreason_manifest.utils.algebra.validate_payload = original

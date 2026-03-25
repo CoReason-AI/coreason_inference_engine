@@ -9,7 +9,6 @@ from coreason_manifest.spec.ontology import (
     EpistemicLedgerState,
     PermissionBoundaryPolicy,
     SideEffectProfile,
-    ToolInvocationEvent,
     ToolManifest,
 )
 
@@ -169,8 +168,10 @@ async def test_hallucinated_tool_escalation(
 
     # Verify that the valid intent was eventually yielded
     assert isinstance(intent, dict)
-    assert intent.get("type") == "system2_remediation" # test was expecting it to return the successful one, but engine actually fails out
-    pass # replaced
+    assert (
+        intent.get("type") == "system2_remediation"
+    )  # test was expecting it to return the successful one, but engine actually fails out
+    # replaced
 
     # Attempt counter should be 2 because the first attempt failed validation
     assert attempt_counter == 1

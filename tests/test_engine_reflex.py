@@ -216,7 +216,9 @@ async def test_reflex_fast_path_fallback_invalid_intent(
     )
 
     assert (intent.get("type") if isinstance(intent, dict) else getattr(intent, "type", None)) == "informational"
-    assert (intent.get("message") if isinstance(intent, dict) else getattr(intent, "message", None)) == "Deep thought result"
+    assert (
+        intent.get("message") if isinstance(intent, dict) else getattr(intent, "message", None)
+    ) == "Deep thought result"
     assert adapter.call_count == 2
     assert adapter.max_tokens_received == [150, None]
 

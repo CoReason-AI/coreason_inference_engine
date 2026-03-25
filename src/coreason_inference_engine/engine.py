@@ -396,7 +396,8 @@ class InferenceEngine:
             i
             for i, event in enumerate(history)
             if (isinstance(event, dict) and event.get("type") == "system2_remediation")
-            or getattr(event, "type", "") == "system2_remediation" or type(event).__name__ == "System2RemediationIntent"
+            or getattr(event, "type", "") == "system2_remediation"
+            or type(event).__name__ == "System2RemediationIntent"
         ]
         if len(remediation_indices) > 1:
             indices_to_remove = set(remediation_indices[:-1])

@@ -38,3 +38,39 @@ def test_engine_schema_caching_failure(mock_files: MagicMock) -> None:
     _schema = engine._get_target_json_schema("intent")
     assert engine._cached_schema is not None
     assert engine._cached_schema == {"type": "object", "$defs": {}}
+
+
+@patch("importlib.resources.files")
+def test_engine_schema_composite_props(mock_files: MagicMock) -> None:
+    schema_data = {
+        "type": "object",
+        "$defs": {
+            "InformationalIntent": {"type": "object", "properties": {"a": {"type": "string"}}},
+            "ToolInvocationEvent": {"type": "object", "properties": {"b": {"type": "string"}}},
+            "OtherDef": {"type": "object", "properties": {"c": {"type": "string"}}},
+        },
+    }
+    mock_path = mock_files.return_value.joinpath.return_value
+    mock_path.open = mock_open(read_data=json.dumps(schema_data))
+
+    adapter = DummyAdapter(responses=[])
+    engine = InferenceEngine(adapter)
+
+    schema = engine._get_target_json_schema("intent")
+    assert engine._cached_schema is not None
+    assert "a" in schema["properties"]
+    assert "b" in schema["properties"]
+    assert "c" not in schema["properties"]
+
+
+@patch("importlib.resources.files")
+def test_engine_schema_composite_fallback(mock_files: MagicMock) -> None:
+    schema_data = {"type": "object", "$defs": {}}
+    mock_path = mock_files.return_value.joinpath.return_value
+    mock_path.open = mock_open(read_data=json.dumps(schema_data))
+
+    adapter = DummyAdapter(responses=[])
+    engine = InferenceEngine(adapter)
+
+    schema = engine._get_target_json_schema("unknown_schema_key")
+    assert schema["type"] == "object"

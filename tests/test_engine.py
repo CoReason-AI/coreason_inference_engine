@@ -1137,3 +1137,24 @@ def test_engine_target_schema_json_missing() -> None:
     engine = InferenceEngine(adapter)
     schema = engine._get_target_json_schema("unknown_key_for_test")
     assert schema.get("type") == "object"
+
+
+def test_validate_intent_not_dict() -> None:
+    adapter = DummyAdapter(responses=[])
+    engine = InferenceEngine(adapter)
+    with pytest.raises(ValueError, match="Payload must be a dictionary"):
+        engine._validate_intent("intent", b'["invalid", "list"]')
+
+
+def test_validate_intent_missing_tool_name() -> None:
+    adapter = DummyAdapter(responses=[])
+    engine = InferenceEngine(adapter)
+    with pytest.raises(ValueError, match="Missing tool_name in tool_invocation"):
+        engine._validate_intent("intent", b'{"type": "tool_invocation"}')
+
+
+def test_validate_intent_missing_message() -> None:
+    adapter = DummyAdapter(responses=[])
+    engine = InferenceEngine(adapter)
+    with pytest.raises(ValueError, match="Missing message in informational"):
+        engine._validate_intent("intent", b'{"type": "informational"}')

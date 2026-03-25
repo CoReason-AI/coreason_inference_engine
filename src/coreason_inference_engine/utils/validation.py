@@ -23,7 +23,7 @@ def generate_correction_prompt(error: Exception, target_node_id: str, fault_id: 
     failing_pointers = []
     remediation_prompts = []
 
-    if not hasattr(error, "errors") or not callable(getattr(error, "errors")):
+    if not hasattr(error, "errors") or not callable(error.errors):
         return System2RemediationIntent(
             fault_id=fault_id, target_node_id=target_node_id, failing_pointers=["/"], remediation_prompt=str(error)
         )

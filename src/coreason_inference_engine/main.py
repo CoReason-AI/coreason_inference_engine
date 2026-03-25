@@ -51,10 +51,10 @@ class InferenceRPCServer:
                     raise HTTPException(status_code=400, detail="node_id is required")
 
                 intent, receipt, scratchpad, cognitive_receipt = await self.engine.generate_intent(
-                    node=node.model_dump(),
-                    ledger=ledger.model_dump(),
+                    node=node if isinstance(node, dict) else node.model_dump(),
+                    ledger=ledger if isinstance(ledger, dict) else ledger.model_dump(),
                     node_id=node_id,
-                    action_space=action_space.model_dump(),
+                    action_space=action_space if isinstance(action_space, dict) else action_space.model_dump(),
                 )
 
                 return {

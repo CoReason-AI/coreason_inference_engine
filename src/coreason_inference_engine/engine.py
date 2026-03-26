@@ -51,16 +51,18 @@ class InferenceEngine:
         self._cached_schema: dict[str, Any] | None = None
 
     def _compile_watermark_biases(
-        self, contract: Any | None, vocab_size: int = 128000, prior_tokens: list[int] | None = None
+        self, contract: Any | None, vocab_size: int = 128000, prior_text: str | None = None
     ) -> dict[int, float] | None:
         if not contract:
             return None
 
-        prior_tokens = prior_tokens or []
-
-        # 1. Extract rolling context window to seed the PRF (prevents cropping attacks)
-        window = prior_tokens[-contract.context_history_window :] if contract.context_history_window > 0 else []
-        state_bytes = b"".join(t.to_bytes(4, "big") for t in window)
+        # 1. Extract rolling context window using raw UTF-8 bytes (tokenizer-agnostic)
+        # This ensures cross-language determinism regardless of tokenizer implementation
+        context_bytes = (prior_text or "").encode("utf-8")
+        context_window = getattr(contract, "context_history_window", 0)
+        if context_window > 0 and len(context_bytes) > context_window:
+            context_bytes = context_bytes[-context_window:]
+        state_bytes = context_bytes
 
         # 2. Execute the Pseudo-Random Function (HMAC-SHA256)
         key = bytes.fromhex(contract.prf_seed_hash)
@@ -575,8 +577,10 @@ class InferenceEngine:
             if local_node.peft_adapters:
                 await self.adapter.apply_peft_adapters(local_node.peft_adapters)
 
+            # Compile context text for watermark seeding (tokenizer-agnostic UTF-8 bytes)
+            watermark_context_text = json.dumps(messages) if messages else ""
             logit_biases = self._compile_watermark_biases(
-                local_node.logit_steganography, vocab_size=128000, prior_tokens=[]
+                local_node.logit_steganography, vocab_size=128000, prior_text=watermark_context_text
             )
 
             import random

@@ -12,7 +12,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from coreason_inference_engine.adapters.dto import LocalSystem2RemediationIntent
+from coreason_inference_engine.adapters.manifest_adapters import LocalSystem2RemediationIntent
 
 
 class ConstrainedDecodingPolicy(BaseModel):

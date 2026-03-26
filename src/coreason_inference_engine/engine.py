@@ -19,7 +19,7 @@ import httpx
 import jsonschema
 from jsonschema.exceptions import ValidationError
 
-from coreason_inference_engine.adapters.dto import (
+from coreason_inference_engine.adapters.manifest_adapters import (
     LocalCognitiveRewardReceipt,
     LocalLatentScratchpadReceipt,
     LocalSystemFaultEvent,
@@ -258,7 +258,11 @@ class InferenceEngine:
         If the model yields a valid ToolInvocationEvent within the subset, returns it immediately.
         Otherwise, returns None to fallback to standard deep generation.
         """
-        from coreason_inference_engine.adapters.dto import LocalActionSpace, LocalAgentNodeProfile, LocalLedgerState
+        from coreason_inference_engine.adapters.manifest_adapters import (
+            LocalActionSpace,
+            LocalAgentNodeProfile,
+            LocalLedgerState,
+        )
 
         node_data = node if isinstance(node, dict) else node.model_dump()
         local_node = LocalAgentNodeProfile(**node_data)
@@ -475,7 +479,11 @@ class InferenceEngine:
             InferenceConvergenceError: If max_loops are exceeded or upstream API fatally fails.
             asyncio.CancelledError: If preempted by the Orchestrator.
         """
-        from coreason_inference_engine.adapters.dto import LocalActionSpace, LocalAgentNodeProfile, LocalLedgerState
+        from coreason_inference_engine.adapters.manifest_adapters import (
+            LocalActionSpace,
+            LocalAgentNodeProfile,
+            LocalLedgerState,
+        )
 
         node_data = node if isinstance(node, dict) else node.model_dump()
         local_node = LocalAgentNodeProfile(**node_data)
@@ -676,7 +684,7 @@ class InferenceEngine:
                                 events.clear()  # pragma: no cover
                             except StopIteration:  # pragma: no cover
                                 break
-                            except ijson.JSONError, UnicodeEncodeError:  # pragma: no cover
+                            except (ijson.JSONError, UnicodeEncodeError):  # pragma: no cover
                                 # We ignore standard parse errors during streaming since it's incomplete
                                 events.clear()
 

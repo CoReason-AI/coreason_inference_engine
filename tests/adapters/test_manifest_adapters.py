@@ -6,7 +6,11 @@
 # For details, see the LICENSE file.
 # Commercial use beyond a 30-day trial requires a separate license.
 
-from coreason_inference_engine.adapters.dto import LocalActionSpace, LocalAgentNodeProfile, LocalLedgerState
+from coreason_inference_engine.adapters.manifest_adapters import (
+    LocalActionSpace,
+    LocalAgentNodeProfile,
+    LocalLedgerState,
+)
 
 
 def test_local_agent_node_profile_ignores_extra() -> None:
